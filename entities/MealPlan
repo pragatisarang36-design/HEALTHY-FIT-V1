@@ -1,0 +1,31 @@
+{
+  "name": "MealPlan",
+  "type": "object",
+  "properties": {
+    "plan_type": {
+      "type": "string",
+      "enum": [
+        "1_day",
+        "7_day"
+      ],
+      "description": "Plan duration"
+    },
+    "filter": {
+      "type": "string",
+      "description": "Diet filter applied"
+    },
+    "plan_data": {
+      "type": "object",
+      "description": "The full meal plan JSON"
+    },
+    "date_generated": {
+      "type": "string",
+      "format": "date",
+      "description": "When the plan was generated"
+    }
+  },
+  "required": [
+    "plan_type",
+    "plan_data"
+  ]
+}

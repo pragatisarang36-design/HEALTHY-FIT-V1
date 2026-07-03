@@ -1,0 +1,18 @@
+{
+  "name": "WorkoutPlan",
+  "type": "object",
+  "properties": {
+    "plan_data": {
+      "type": "object",
+      "description": "The full weekly workout plan JSON"
+    },
+    "date_generated": {
+      "type": "string",
+      "format": "date",
+      "description": "When the plan was generated"
+    }
+  },
+  "required": [
+    "plan_data"
+  ]
+}

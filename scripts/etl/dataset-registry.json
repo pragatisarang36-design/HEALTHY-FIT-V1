@@ -1,0 +1,159 @@
+{
+  "version": "1.0.0",
+  "description": "Config-driven dataset registry for Master Nutrition ETL. Add new datasets here without code changes.",
+  "defaults": {
+    "rawDir": "raw_datasets",
+    "processedDir": "processed_datasets",
+    "logDir": "import_logs"
+  },
+  "datasets": {
+    "sample_master_foods": {
+      "enabled": false,
+      "adapter": "generic",
+      "sourceKey": "ifct",
+      "sourceName": "Sample Master Foods",
+      "inputPattern": "sample_master_foods.csv",
+      "description": "Sample unified CSV for local testing"
+    },
+    "custom_csv": {
+      "enabled": true,
+      "adapter": "generic",
+      "sourceKey": null,
+      "sourceName": null,
+      "inputPattern": "*.csv",
+      "excludePatterns": ["sample_master_foods.csv", "ifct2017.csv"],
+      "description": "Any CSV/JSON dropped into raw_datasets with standard column names"
+    },
+    "custom_json": {
+      "enabled": true,
+      "adapter": "generic",
+      "sourceKey": null,
+      "sourceName": null,
+      "inputPattern": "*.json",
+      "description": "JSON food arrays with standard field names"
+    },
+    "custom_xlsx": {
+      "enabled": true,
+      "adapter": "generic",
+      "sourceKey": null,
+      "sourceName": null,
+      "inputPattern": "*.xlsx",
+      "description": "XLSX food sheets with standard column names"
+    },
+    "usda_fdc": {
+      "enabled": true,
+      "adapter": "usda",
+      "sourceKey": "usda_fdc",
+      "sourceName": "USDA FoodData Central",
+      "inputPath": "raw_datasets/usda",
+      "options": {
+        "maxFoods": 50000,
+        "mode": "common"
+      },
+      "description": "USDA FoodData Central extracted CSV folder (food.csv, nutrient.csv, food_nutrient.csv)"
+    },
+    "ifct_2017": {
+      "enabled": true,
+      "adapter": "ifct",
+      "sourceKey": "ifct",
+      "sourceName": "Indian Food Composition Tables 2017",
+      "inputPath": "raw_datasets/ifct2017.csv",
+      "sourceUrl": "https://raw.githubusercontent.com/nodef/ifct2017/main/compositions/index.csv",
+      "description": "IFCT 2017 local CSV, with GitHub download fallback"
+    },
+    "open_food_facts": {
+      "enabled": true,
+      "adapter": "off",
+      "sourceKey": "open_food_facts",
+      "sourceName": "Open Food Facts",
+      "inputPath": "raw_datasets/openfoodfacts.csv.gz",
+      "options": {
+        "maxFoods": 50000,
+        "countryFilter": "india"
+      },
+      "description": "Open Food Facts product export (CSV/TSV/GZ)"
+    },
+    "fndds": {
+      "enabled": true,
+      "adapter": "fndds",
+      "sourceKey": "fndds",
+      "sourceName": "Food and Nutrient Database for Dietary Studies",
+      "inputPath": "raw_datasets/fndds",
+      "options": {
+        "maxFoods": 50000,
+        "maxIngredientFoods": 0
+      },
+      "description": "FNDDS At A Glance extracted folder with Foods, Portions, Ingredients, Ingredient Nutrients, and Food Nutrient Values XLSX files"
+    },
+    "indb": {
+      "enabled": true,
+      "adapter": "generic",
+      "sourceKey": "indb",
+      "sourceName": "Indian Nutrient Database",
+      "inputPattern": "indb*.csv",
+      "description": "Future INDB import via standard CSV columns"
+    },
+    "indb_json": {
+      "enabled": true,
+      "adapter": "generic",
+      "sourceKey": "indb",
+      "sourceName": "Indian Nutrient Database",
+      "inputPattern": "indb*.json",
+      "description": "INDB JSON arrays using standard nutrition fields"
+    },
+    "indb_xlsx": {
+      "enabled": true,
+      "adapter": "generic",
+      "sourceKey": "indb",
+      "sourceName": "Indian Nutrient Database",
+      "inputPattern": "indb*.xlsx",
+      "description": "INDB XLSX sheets using standard nutrition fields"
+    },
+    "recipe_derived": {
+      "enabled": true,
+      "adapter": "generic",
+      "sourceKey": "recipe_derived",
+      "sourceName": "Recipe-derived aggregate",
+      "inputPattern": "recipe*.csv",
+      "description": "Recipe template source CSVs with recipe_ingredients column"
+    },
+    "recipe_derived_json": {
+      "enabled": true,
+      "adapter": "generic",
+      "sourceKey": "recipe_derived",
+      "sourceName": "Recipe-derived aggregate",
+      "inputPattern": "recipe*.json",
+      "description": "Recipe-derived nutrition JSON arrays with standard fields"
+    },
+    "recipe_derived_xlsx": {
+      "enabled": true,
+      "adapter": "generic",
+      "sourceKey": "recipe_derived",
+      "sourceName": "Recipe-derived aggregate",
+      "inputPattern": "recipe*.xlsx",
+      "description": "Recipe-derived nutrition XLSX sheets with standard fields"
+    }
+  },
+  "columnAliases": {
+    "sourceName": ["source_name", "source", "dataset", "data_source"],
+    "externalId": ["external_id", "source_id", "fdc_id", "code", "id", "product_code", "barcode"],
+    "foodName": ["food_name", "name", "canonical_name", "product_name", "recipe_name", "dish_name", "food"],
+    "category": ["category", "food_category", "group"],
+    "cuisine": ["cuisine", "region_cuisine"],
+    "brand": ["brand", "brands", "brand_owner", "manufacturer"],
+    "barcode": ["barcode", "code", "product_code", "ean"],
+    "calories": ["calories_per_100g", "energy_kcal_100g", "energy-kcal_100g", "kcal_100g", "calories", "energy_kcal"],
+    "protein": ["protein_per_100g", "proteins_100g", "protein_100g", "protein", "proteins"],
+    "carbs": ["carbs_per_100g", "carbohydrates_100g", "carbohydrate_100g", "carbs_100g", "carbohydrates", "carbs"],
+    "fat": ["fat_per_100g", "fats_per_100g", "fat_100g", "fats_100g", "fat", "fats"],
+    "fiber": ["fiber_per_100g", "fibre_per_100g", "fiber_100g", "fibre_100g", "fiber", "fibre"],
+    "water": ["water_per_100g", "water_100g", "water"],
+    "servingName": ["serving_name", "serving_unit", "household_serving", "portion_name", "unit"],
+    "servingGrams": ["serving_grams", "grams", "serving_weight_g", "portion_grams", "quantity_g"],
+    "aliases": ["aliases", "alias", "alternate_names", "synonyms", "common_names"],
+    "language": ["language", "lang"],
+    "region": ["region", "state"],
+    "recipeIngredients": ["recipe_ingredients", "ingredients", "ingredient_percentages", "template_items"],
+    "stateKey": ["state_key", "food_state", "preparation_state", "state"]
+  }
+}

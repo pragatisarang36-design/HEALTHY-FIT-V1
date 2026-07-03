@@ -1,0 +1,87 @@
+{
+  "name": "Profile",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "User's full name"
+    },
+    "age": {
+      "type": "number",
+      "description": "User's age"
+    },
+    "gender": {
+      "type": "string",
+      "enum": [
+        "male",
+        "female",
+        "other"
+      ],
+      "description": "User's gender"
+    },
+    "height": {
+      "type": "number",
+      "description": "Height in cm"
+    },
+    "weight": {
+      "type": "number",
+      "description": "Current weight in kg"
+    },
+    "target_weight": {
+      "type": "number",
+      "description": "Target weight in kg"
+    },
+    "fitness_goal": {
+      "type": "string",
+      "enum": [
+        "weight_loss",
+        "weight_gain",
+        "maintenance",
+        "muscle_gain"
+      ],
+      "description": "Primary fitness goal"
+    },
+    "diet_preference": {
+      "type": "string",
+      "enum": [
+        "vegetarian",
+        "non_vegetarian",
+        "vegan",
+        "eggetarian",
+        "pescatarian"
+      ],
+      "description": "Diet preference"
+    },
+    "food_allergies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of food allergies"
+    },
+    "food_dislikes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of food dislikes"
+    },
+    "water_goal_litres": {
+      "type": "number",
+      "description": "Daily water intake goal in litres"
+    },
+    "is_profile_complete": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the profile setup is complete"
+    }
+  },
+  "required": [
+    "name",
+    "age",
+    "gender",
+    "height",
+    "weight",
+    "fitness_goal"
+  ]
+}

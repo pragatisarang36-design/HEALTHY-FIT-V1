@@ -1,0 +1,35 @@
+{
+  "name": "Notification",
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Notification message"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "calorie",
+        "protein",
+        "hydration",
+        "workout",
+        "weight",
+        "general"
+      ],
+      "description": "Notification type"
+    },
+    "is_read": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether notification has been read"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    }
+  },
+  "required": [
+    "message",
+    "type"
+  ]
+}

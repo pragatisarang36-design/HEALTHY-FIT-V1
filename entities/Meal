@@ -1,0 +1,53 @@
+{
+  "name": "Meal",
+  "type": "object",
+  "properties": {
+    "food_name": {
+      "type": "string",
+      "description": "Name of the food item"
+    },
+    "meal_type": {
+      "type": "string",
+      "description": "Type of meal, such as breakfast, lunch, snack, pre-workout, or a custom label"
+    },
+    "calories": {
+      "type": "number",
+      "description": "Calories in kcal"
+    },
+    "protein": {
+      "type": "number",
+      "description": "Protein in grams"
+    },
+    "carbs": {
+      "type": "number",
+      "description": "Carbohydrates in grams"
+    },
+    "fats": {
+      "type": "number",
+      "description": "Fats in grams"
+    },
+    "quantity": {
+      "type": "string",
+      "description": "Quantity description e.g. 1 bowl, 2 pieces"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of the meal"
+    },
+    "image_url": {
+      "type": "string",
+      "description": "URL of the meal image if scanned"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional user note or description for the meal"
+    }
+  },
+  "required": [
+    "food_name",
+    "meal_type",
+    "calories",
+    "date"
+  ]
+}

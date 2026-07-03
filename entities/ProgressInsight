@@ -1,0 +1,34 @@
+{
+  "name": "ProgressInsight",
+  "type": "object",
+  "properties": {
+    "insights": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "metric_value": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Array of insight cards"
+    },
+    "date_generated": {
+      "type": "string",
+      "format": "date"
+    }
+  },
+  "required": [
+    "insights"
+  ]
+}

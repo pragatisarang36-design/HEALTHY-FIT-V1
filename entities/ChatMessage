@@ -1,0 +1,26 @@
+{
+  "name": "ChatMessage",
+  "type": "object",
+  "properties": {
+    "role": {
+      "type": "string",
+      "enum": [
+        "user",
+        "assistant"
+      ],
+      "description": "Message sender role"
+    },
+    "content": {
+      "type": "string",
+      "description": "Message content"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Chat session identifier"
+    }
+  },
+  "required": [
+    "role",
+    "content"
+  ]
+}

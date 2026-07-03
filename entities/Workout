@@ -1,0 +1,58 @@
+{
+  "name": "Workout",
+  "type": "object",
+  "properties": {
+    "workout_type": {
+      "type": "string",
+      "enum": [
+        "walking",
+        "running",
+        "cycling",
+        "gym",
+        "yoga",
+        "skipping",
+        "dancing",
+        "football",
+        "cricket",
+        "basketball",
+        "swimming",
+        "hiking",
+        "pilates",
+        "boxing",
+        "martial_arts",
+        "tennis",
+        "badminton",
+        "other_sport"
+      ],
+      "description": "Type of workout"
+    },
+    "duration_minutes": {
+      "type": "number",
+      "description": "Duration in minutes"
+    },
+    "intensity": {
+      "type": "string",
+      "enum": [
+        "low",
+        "moderate",
+        "high"
+      ],
+      "description": "Workout intensity"
+    },
+    "calories_burned": {
+      "type": "number",
+      "description": "Calories burned (auto-calculated)"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of workout"
+    }
+  },
+  "required": [
+    "workout_type",
+    "duration_minutes",
+    "intensity",
+    "date"
+  ]
+}

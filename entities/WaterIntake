@@ -1,0 +1,19 @@
+{
+  "name": "WaterIntake",
+  "type": "object",
+  "properties": {
+    "glasses": {
+      "type": "number",
+      "description": "Number of glasses (1 glass = 200ml)"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of intake"
+    }
+  },
+  "required": [
+    "glasses",
+    "date"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "Healthy Fit 519",
+  "short_name": "Healthy Fit",
+  "description": "Fitness, meals, workouts, hydration, and progress tracking.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#10b981",
+  "icons": []
+}

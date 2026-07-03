@@ -1,0 +1,75 @@
+#env
+.env
+.env.*
+!.env.local.example
+
+# Logs
+/logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+.env
+.vite
+
+# local secrets
+.env
+.env.local
+.env.*.local
+
+# local/generated archives
+*.zip
+
+# generated/runtime folders
+node_modules/
+dist/
+.tmp/
+tmp/
+import_logs/
+reports/
+
+# raw/local datasets
+raw_datasets/
+processed_datasets/
+
+# large generated Supabase import artifacts
+supabase/imports/
+
+# local/generated data
+raw_datasets/
+processed_datasets/
+import_logs/
+reports/
+
+# archives
+*.zip
+
+# build/deps/temp
+node_modules/
+dist/
+.tmp/
+tmp/
+
+# secrets
+.env
+.env.local
+.env.*.local

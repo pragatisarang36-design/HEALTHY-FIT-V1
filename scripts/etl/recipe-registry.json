@@ -1,0 +1,173 @@
+{
+  "version": "1.0.0",
+  "description": "Config-driven recipe dataset registry. Add new recipe sources here without code changes.",
+  "defaults": {
+    "rawDir": "raw_datasets/recipes",
+    "processedDir": "processed_datasets",
+    "logDir": "import_logs/recipes",
+    "foodsCatalog": "processed_datasets/foods.csv",
+    "minRecipesPerTemplate": 1,
+    "minConfidence": 0.35
+  },
+  "sourceKeys": {
+    "recipe_derived": { "sourceName": "Recipe-derived aggregate", "priority": 50 },
+    "recipe_db": { "sourceName": "RecipeDB", "priority": 51 },
+    "recipe_nlg": { "sourceName": "RecipeNLG", "priority": 52 },
+    "recipe1m": { "sourceName": "Recipe1M+", "priority": 53 },
+    "food_com": { "sourceName": "Food.com Recipes", "priority": 54 },
+    "epicurious": { "sourceName": "Epicurious Recipes", "priority": 55 },
+    "indian_recipes_6000": { "sourceName": "6000+ Indian Recipes", "priority": 56 },
+    "indian_recipes_nutrition": { "sourceName": "Indian Recipes + Nutrition", "priority": 57 },
+    "indian_recipes_cleaned": { "sourceName": "Cleaned Indian Recipes", "priority": 58 },
+    "indori": { "sourceName": "INDoRI", "priority": 59 }
+  },
+  "datasets": {
+    "sample_recipes": {
+      "enabled": false,
+      "sourceKey": "recipe_derived",
+      "inputPattern": "sample_recipes.json",
+      "description": "Local sample with duplicate recipe variants for aggregation testing"
+    },
+    "recipe_csv_long": {
+      "enabled": false,
+      "sourceKey": "recipe_derived",
+      "inputPattern": "recipe_ingredients*.csv",
+      "description": "Long-format CSV: one row per ingredient (recipe_name, ingredient_name, amount, unit)"
+    },
+    "recipe_nlg": {
+      "enabled": true,
+      "sourceKey": "recipe_nlg",
+      "inputPattern": "recipenlg*.json",
+      "description": "RecipeNLG JSON with title + ingredients text array"
+    },
+    "recipe_db": {
+      "enabled": true,
+      "sourceKey": "recipe_db",
+      "inputPattern": "recipedb*.json",
+      "description": "RecipeDB JSON exports with structured ingredients"
+    },
+    "recipe_db_csv": {
+      "enabled": true,
+      "sourceKey": "recipe_db",
+      "inputPattern": "recipedb*.csv",
+      "description": "RecipeDB CSV exports with recipe and ingredient columns"
+    },
+    "recipe_db_xlsx": {
+      "enabled": true,
+      "sourceKey": "recipe_db",
+      "inputPattern": "recipedb*.xlsx",
+      "description": "RecipeDB XLSX exports with recipe and ingredient columns"
+    },
+    "recipe1m": {
+      "enabled": true,
+      "sourceKey": "recipe1m",
+      "inputPattern": "recipe1m*.json",
+      "description": "Recipe1M+ JSON exports"
+    },
+    "food_com": {
+      "enabled": true,
+      "sourceKey": "food_com",
+      "inputPattern": "foodcom*.json",
+      "description": "Food.com recipe JSON exports"
+    },
+    "food_com_csv": {
+      "enabled": true,
+      "sourceKey": "food_com",
+      "inputPattern": "foodcom*.csv",
+      "description": "Food.com recipe CSV exports"
+    },
+    "food_com_xlsx": {
+      "enabled": true,
+      "sourceKey": "food_com",
+      "inputPattern": "foodcom*.xlsx",
+      "description": "Food.com recipe XLSX exports"
+    },
+    "epicurious": {
+      "enabled": true,
+      "sourceKey": "epicurious",
+      "inputPattern": "epicurious*.json",
+      "description": "Epicurious recipe JSON exports"
+    },
+    "indian_recipes": {
+      "enabled": true,
+      "sourceKey": "indian_recipes_6000",
+      "inputPattern": "indian_recipes*.json",
+      "description": "Indian recipe dataset JSON exports"
+    },
+    "indian_recipes_6000_csv": {
+      "enabled": true,
+      "sourceKey": "indian_recipes_6000",
+      "inputPattern": "indian_recipes_6000*.csv",
+      "description": "6000+ Indian Recipes CSV exports"
+    },
+    "indian_recipes_6000_xlsx": {
+      "enabled": true,
+      "sourceKey": "indian_recipes_6000",
+      "inputPattern": "indian_recipes_6000*.xlsx",
+      "description": "6000+ Indian Recipes XLSX exports"
+    },
+    "indian_recipes_csv": {
+      "enabled": true,
+      "sourceKey": "indian_recipes_cleaned",
+      "inputPattern": "indian_recipes*.csv",
+      "description": "Indian recipe CSV exports"
+    },
+    "cleaned_indian_recipes_json": {
+      "enabled": true,
+      "sourceKey": "indian_recipes_cleaned",
+      "inputPattern": "cleaned_indian_recipes*.json",
+      "description": "Cleaned Indian Recipes JSON exports"
+    },
+    "cleaned_indian_recipes_csv": {
+      "enabled": true,
+      "sourceKey": "indian_recipes_cleaned",
+      "inputPattern": "cleaned_indian_recipes*.csv",
+      "description": "Cleaned Indian Recipes CSV exports"
+    },
+    "cleaned_indian_recipes_xlsx": {
+      "enabled": true,
+      "sourceKey": "indian_recipes_cleaned",
+      "inputPattern": "cleaned_indian_recipes*.xlsx",
+      "description": "Cleaned Indian Recipes XLSX exports"
+    },
+    "indori": {
+      "enabled": true,
+      "sourceKey": "indori",
+      "inputPattern": "indori*.json",
+      "description": "INDoRI recipe dataset"
+    },
+    "indori_csv": {
+      "enabled": true,
+      "sourceKey": "indori",
+      "inputPattern": "indori*.csv",
+      "description": "INDoRI recipe CSV exports"
+    },
+    "indori_xlsx": {
+      "enabled": true,
+      "sourceKey": "indori",
+      "inputPattern": "indori*.xlsx",
+      "description": "INDoRI recipe XLSX exports"
+    },
+    "custom_recipe_json": {
+      "enabled": true,
+      "sourceKey": "recipe_derived",
+      "inputPattern": "*.json",
+      "excludePatterns": ["sample_recipes.json", "recipenlg*.json", "recipedb*.json", "recipe1m*.json", "foodcom*.json", "epicurious*.json", "indian_recipes*.json", "cleaned_indian_recipes*.json", "indori*.json"],
+      "description": "Any other JSON recipe file dropped into raw_datasets/recipes/"
+    },
+    "custom_recipe_csv": {
+      "enabled": true,
+      "sourceKey": "recipe_derived",
+      "inputPattern": "*.csv",
+      "excludePatterns": ["recipe_ingredients*.csv", "recipedb*.csv", "foodcom*.csv", "indian_recipes*.csv", "cleaned_indian_recipes*.csv", "indori*.csv"],
+      "description": "Any other CSV recipe file dropped into raw_datasets/recipes/"
+    },
+    "custom_recipe_xlsx": {
+      "enabled": true,
+      "sourceKey": "recipe_derived",
+      "inputPattern": "*.xlsx",
+      "excludePatterns": ["recipedb*.xlsx", "foodcom*.xlsx", "indian_recipes*.xlsx", "cleaned_indian_recipes*.xlsx", "indori*.xlsx"],
+      "description": "Any XLSX recipe sheet dropped into raw_datasets/recipes/"
+    }
+  }
+}
