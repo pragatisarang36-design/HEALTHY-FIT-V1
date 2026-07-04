@@ -753,10 +753,15 @@ export default function MealTracker() {
   const enrichMissingIngredients = async (meal) => {
     if (hasIngredients(meal)) return meal;
 
-    let result = await estimateNutrition(meal.food_name, meal.quantity);
-    if (!result) result = await retryEstimateNutrition(meal.food_name, meal.quantity);
+    const datasetResult = await estimateNutritionFromFreeSources(meal.food_name, meal.quantity);
+    let ingredients = normalizeIngredients(datasetResult?.ingredients);
 
-    const ingredients = normalizeIngredients(result?.ingredients);
+    if (ingredients.length === 0) {
+      let result = await estimateNutrition(meal.food_name, meal.quantity);
+      if (!result) result = await retryEstimateNutrition(meal.food_name, meal.quantity);
+      ingredients = normalizeIngredients(result?.ingredients);
+    }
+
     if (ingredients.length === 0) return meal;
 
     const enrichedMeal = { ...meal, ingredients };

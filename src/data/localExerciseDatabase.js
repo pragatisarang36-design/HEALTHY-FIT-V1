@@ -1,3 +1,5 @@
+import { generatedExerciseDatabase } from '@/data/generatedExerciseDatabase';
+
 const createExercise = (id, name, category, muscles, blockedForInjuries = [], equipment = ['none'], level = ['beginner', 'intermediate']) => ({
   id,
   name,
@@ -53,3 +55,7 @@ export const localExerciseDatabase = baseExercises.flatMap(([id, name, category,
     createExercise(`${id}-${variant}`, `${variant[0].toUpperCase()}${variant.slice(1)} ${name}`, category, muscles, blocked, equipment, level)
   ),
 ]);
+
+export const exerciseDatabase = generatedExerciseDatabase.length
+  ? generatedExerciseDatabase
+  : localExerciseDatabase;

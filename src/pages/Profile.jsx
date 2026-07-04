@@ -90,8 +90,16 @@ export default function Profile() {
     }
 
     setSaving(true);
+    const withPendingTag = (items = [], pending = '') => {
+      const value = pending.trim();
+      return value && !items.includes(value) ? [...items, value] : items;
+    };
+    const foodAllergies = withPendingTag(form.food_allergies, allergyInput);
+    const foodDislikes = withPendingTag(form.food_dislikes, dislikeInput);
     const data = {
       ...form,
+      food_allergies: foodAllergies,
+      food_dislikes: foodDislikes,
       age: Number(form.age),
       height: Number(form.height),
       weight: Number(form.weight),
@@ -108,6 +116,8 @@ export default function Profile() {
       }
 
       await queryClient.invalidateQueries({ queryKey: ['profile'] });
+      setAllergyInput('');
+      setDislikeInput('');
       toast({ title: 'Profile saved!', description: 'Your profile has been updated.' });
       navigate('/');
     } catch (error) {

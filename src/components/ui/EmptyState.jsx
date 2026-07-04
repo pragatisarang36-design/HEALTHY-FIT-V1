@@ -1,8 +1,8 @@
 import React from 'react';
 
-export default function EmptyState({ icon: Icon, title, description }) {
+export default function EmptyState({ icon: Icon, title, description, ...props }) {
   return (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
+    <div className="flex flex-col items-center justify-center py-12 text-center" {...props}>
       {Icon && (
         <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
           <Icon className="w-7 h-7 text-muted-foreground" />

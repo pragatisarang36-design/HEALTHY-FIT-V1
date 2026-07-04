@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 test('redirects signed-out users to the login screen', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
 
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole('heading', { name: 'Healthy Fit' })).toBeVisible();

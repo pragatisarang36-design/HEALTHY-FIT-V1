@@ -69,6 +69,11 @@ dist/
 .tmp/
 tmp/
 
+# test artifacts
+test-results/
+playwright-report/
+blob-report/
+
 # secrets
 .env
 .env.local

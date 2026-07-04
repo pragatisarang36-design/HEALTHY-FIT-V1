@@ -16,7 +16,10 @@ import EmptyState from '@/components/ui/EmptyState';
 import { toast } from '@/components/ui/use-toast';
 
 const INJURY_OPTIONS = ['None', 'Knee pain', 'Lower back pain', 'Shoulder pain', 'Wrist pain', 'Other'];
-const EQUIPMENT_OPTIONS = ['none', 'band', 'dumbbells', 'bench', 'bike'];
+const EQUIPMENT_OPTIONS = [
+  'none', 'body only', 'dumbbells', 'barbell', 'cable', 'machine', 'kettlebell',
+  'bands', 'bench', 'bike', 'medicine ball', 'exercise ball', 'foam roll', 'e-z curl bar', 'other',
+];
 
 export default function WorkoutPlanner() {
   const { profile } = useProfile();
@@ -40,7 +43,7 @@ export default function WorkoutPlanner() {
 
   const { data: plans = [] } = useQuery({
     queryKey: ['workout-plans', user?.id],
-    queryFn: () => dataService.entities.WorkoutPlan.filter({ created_by: user?.email }, '-created_date', 1),
+    queryFn: () => dataService.entities.WorkoutPlan.filter({ created_by: user?.email }, '-created_date', 5),
     initialData: [],
     enabled: !!user?.email,
   });
@@ -98,7 +101,6 @@ export default function WorkoutPlanner() {
         seed: `${user?.id || user?.email || 'user'}-${Date.now()}`,
       });
 
-      for (const plan of plans) await dataService.entities.WorkoutPlan.delete(plan.id);
       await dataService.entities.WorkoutPlan.create({
         plan_data: result,
         date_generated: format(new Date(), 'yyyy-MM-dd'),
@@ -137,7 +139,7 @@ export default function WorkoutPlanner() {
           <h1 className="text-2xl font-heading font-bold">Workout Planner</h1>
           <p className="text-sm text-muted-foreground">Rule-based weekly plans with injury-aware exercise filtering.</p>
         </div>
-        <Button onClick={generatePlan} disabled={generating} className="gradient-primary text-white">
+        <Button data-testid="generate-plan-button" onClick={generatePlan} disabled={generating} className="gradient-primary text-white">
           {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ClipboardList className="mr-2 h-4 w-4" />}
           {generating ? 'Generating...' : 'Generate Plan'}
         </Button>
@@ -218,7 +220,7 @@ export default function WorkoutPlanner() {
             const allDone = progress && progress.done === progress.total;
 
             return (
-              <GlassCard key={day.day}>
+              <GlassCard key={day.day} data-testid="workout-plan-day">
                 <div className="mb-3 flex items-center justify-between">
                   <div>
                     <h3 className="font-semibold">{day.day}</h3>
@@ -254,22 +256,38 @@ export default function WorkoutPlanner() {
                       const key = `${dayIndex}-${exerciseIndex}`;
                       const isDone = !!checked[key];
                       return (
-                        <div
-                          key={`${exercise.name}-${exerciseIndex}`}
-                          className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition-all ${isDone ? 'border border-emerald-500/20 bg-emerald-500/10' : 'bg-muted/50 hover:bg-muted/80'}`}
-                          onClick={() => toggleCheck(key)}
-                        >
-                          <button type="button" className="shrink-0 text-primary" onClick={(event) => { event.stopPropagation(); toggleCheck(key); }}>
-                            {isDone ? <CheckSquare className="h-5 w-5 text-emerald-500" /> : <Square className="h-5 w-5 text-muted-foreground" />}
-                          </button>
-                          <div className="min-w-0 flex-1">
-                            <p className={`text-sm font-medium ${isDone ? 'text-muted-foreground line-through' : ''}`}>{exercise.name}</p>
-                            <p className="text-xs text-muted-foreground">{exercise.sets ? `${exercise.sets} sets x ${exercise.reps}` : exercise.reps} · {exercise.intensity}</p>
+                        <div key={`${exercise.name}-${exerciseIndex}`} data-testid="workout-plan-exercise" className={`rounded-lg transition-all ${isDone ? 'border border-emerald-500/20 bg-emerald-500/10' : 'bg-muted/50 hover:bg-muted/80'}`}>
+                          <div className="flex cursor-pointer items-center gap-3 px-3 py-2" onClick={() => toggleCheck(key)}>
+                            <button type="button" className="shrink-0 text-primary" onClick={(event) => { event.stopPropagation(); toggleCheck(key); }}>
+                              {isDone ? <CheckSquare className="h-5 w-5 text-emerald-500" /> : <Square className="h-5 w-5 text-muted-foreground" />}
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-sm font-medium ${isDone ? 'text-muted-foreground line-through' : ''}`}>
+                                {exercise.name}
+                                {exercise.equipment_unverified && (
+                                  <span className="ml-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-amber-500">
+                                    verify equipment
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{exercise.sets ? `${exercise.sets} sets x ${exercise.reps}` : exercise.reps} · {exercise.intensity}</p>
+                            </div>
+                            {exercise.duration_seconds > 0 && (
+                              <Button size="sm" variant="ghost" onClick={(event) => { event.stopPropagation(); startTimer(exercise.name, exercise.duration_seconds); }} className="shrink-0 text-primary">
+                                <Timer className="mr-1 h-4 w-4" /> {formatTime(exercise.duration_seconds)}
+                              </Button>
+                            )}
                           </div>
-                          {exercise.duration_seconds > 0 && (
-                            <Button size="sm" variant="ghost" onClick={(event) => { event.stopPropagation(); startTimer(exercise.name, exercise.duration_seconds); }} className="shrink-0 text-primary">
-                              <Timer className="mr-1 h-4 w-4" /> {formatTime(exercise.duration_seconds)}
-                            </Button>
+                          {exercise.instructions?.length > 0 && (
+                            <details className="px-3 pb-2" onClick={(event) => event.stopPropagation()}>
+                              <summary className="cursor-pointer text-xs text-primary">How to do this</summary>
+                              <ul className="mt-1 list-inside list-disc text-xs text-muted-foreground">
+                                {exercise.instructions.map((step) => <li key={step}>{step}</li>)}
+                              </ul>
+                              {exercise.instructions_generated && (
+                                <p className="mt-1 text-[10px] italic text-muted-foreground">Detailed step-by-step instructions weren't available for this exercise in the imported data.</p>
+                              )}
+                            </details>
                           )}
                         </div>
                       );
@@ -281,7 +299,7 @@ export default function WorkoutPlanner() {
           })}
         </div>
       ) : (
-        <EmptyState icon={ClipboardList} title="No workout plan yet" description="Generate a personalized weekly workout plan above." />
+        <EmptyState icon={ClipboardList} title="No workout plan yet" description="Generate a personalized weekly workout plan above." data-testid="workout-plan-empty-state" />
       )}
 
       <Dialog open={timerOpen} onOpenChange={setTimerOpen}>
