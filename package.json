@@ -8,6 +8,7 @@
         "build": "vite build",
         "lint": "eslint . --quiet",
         "lint:fix": "eslint . --fix",
+        "test:e2e": "playwright test",
         "nutrition:usda": "node scripts/build-usda-nutrition-import.mjs",
         "nutrition:ifct": "node scripts/build-ifct-nutrition-import.mjs",
         "nutrition:off": "node scripts/build-openfoodfacts-nutrition-import.mjs",
@@ -95,6 +96,7 @@
     },
     "devDependencies": {
         "@eslint/js": "^9.19.0",
+        "@playwright/test": "^1.61.1",
         "@types/node": "^22.13.5",
         "@types/react": "^18.2.66",
         "@types/react-dom": "^18.2.22",
