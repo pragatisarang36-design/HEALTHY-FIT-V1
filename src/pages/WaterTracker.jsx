@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { useProfile } from '@/lib/useProfile';
 import { format } from 'date-fns';
 import { Droplets, Plus, Minus, Loader2 } from 'lucide-react';
+import { toast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import GlassCard from '@/components/ui/GlassCard';
 import { Progress } from '@/components/ui/progress';
@@ -29,7 +30,12 @@ export default function WaterTracker() {
 
   const addMutation = useMutation({
     mutationFn: () => dataService.entities.WaterIntake.create({ glasses: 1, date: today }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['water-today'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['water-today', today, user?.id] }),
+    onError: (error) => toast({
+      title: 'Could not log water',
+      description: error?.message || 'Please try again.',
+      variant: 'destructive',
+    }),
   });
 
   const removeMutation = useMutation({
@@ -43,7 +49,12 @@ export default function WaterTracker() {
         }
       }
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['water-today'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['water-today', today, user?.id] }),
+    onError: (error) => toast({
+      title: 'Could not update water log',
+      description: error?.message || 'Please try again.',
+      variant: 'destructive',
+    }),
   });
 
   if (isLoading) {

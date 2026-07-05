@@ -2,7 +2,11 @@ import { supabase } from '@/lib/supabaseClient';
 
 const dateOnly = (value) => {
   if (!value) return null;
-  return new Date(value).toISOString().slice(0, 10);
+  const d = new Date(value);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 const currentUser = async () => {
@@ -553,9 +557,11 @@ const WaterIntake = tableStore({
   normalize: (row, user) => normalizeBase({ ...row, glasses: row.amount }, user),
   toInsert: (data, user) => ({
     user_id: user.id,
+    date: data.date || dateOnly(new Date()),
     amount: Number(data.amount ?? data.glasses) || 1,
   }),
   toUpdate: (data) => ({
+    ...(data.date ? { date: data.date } : {}),
     amount: Number(data.amount ?? data.glasses) || 1,
   }),
 });

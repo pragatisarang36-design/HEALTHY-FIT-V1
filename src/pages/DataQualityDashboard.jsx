@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Database, AlertTriangle, CheckCircle, XCircle, FileText, Utensils, Scale, Tag, BookOpen, Package, DatabaseZap, Ghost, Copy, AlertCircle, ChevronDown, ChevronUp, BarChart3, PieChart, TrendingUp, Download } from 'lucide-react';
+import { Database, AlertTriangle, CheckCircle, XCircle, FileText, Utensils, Scale, Tag, BookOpen, Package, DatabaseZap, Ghost, Copy, AlertCircle, ChevronDown, ChevronUp, BarChart3, Download } from 'lucide-react';
 import GlassCard from '@/components/ui/GlassCard';
 import StatCard from '@/components/ui/StatCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.jsx';

@@ -5,20 +5,66 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import ReactMarkdown from 'react-markdown';
+import { format } from 'date-fns';
 import { useProfile } from '@/lib/useProfile';
 import { generateAIResponse } from '@/services/aiFeatures';
+import { dataService } from '@/services/dataService';
 
 export default function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
 
   const scrollRef = useRef(null);
   const messagesRef = useRef([]);
   const activeRequestRef = useRef(null);
+  const recordIdRef = useRef(null);
+  const today = format(new Date(), 'yyyy-MM-dd');
 
   const { profile } = useProfile();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const rows = await dataService.entities.ChatMessage.filter({ date: today }, '-created_date', 1);
+        if (cancelled) return;
+
+        const existing = rows?.[0];
+        if (existing) {
+          recordIdRef.current = existing.id;
+          const savedMessages = existing.plan_data?.messages || [];
+          setMessages(savedMessages);
+          messagesRef.current = savedMessages;
+        }
+      } catch (error) {
+        console.error('Could not load chat history:', error);
+      } finally {
+        if (!cancelled) setHistoryLoaded(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [today]);
+
+  const persistConversation = useCallback(async (allMessages) => {
+    try {
+      const payload = { plan_data: { messages: allMessages }, date: today };
+      if (recordIdRef.current) {
+        await dataService.entities.ChatMessage.update(recordIdRef.current, payload);
+      } else {
+        const created = await dataService.entities.ChatMessage.create(payload);
+        recordIdRef.current = created.id;
+      }
+    } catch (error) {
+      console.error('Could not save chat history:', error);
+    }
+  }, [today]);
 
   // Auto scroll
   useEffect(() => {
@@ -81,28 +127,31 @@ Rules:
       const response = await generateAIResponse(prompt);
       if (activeRequestRef.current !== requestId) return;
 
-      setMessages(prev => [
-        ...prev,
-        { role: 'assistant', content: response }
-      ]);
+      const withReply = [...nextMessages, { role: 'assistant', content: response }];
+      setMessages(withReply);
+      messagesRef.current = withReply;
+      persistConversation(withReply);
 
     } catch (err) {
       console.error(err);
 
-      setMessages(prev => [
-        ...prev,
+      const withError = [
+        ...nextMessages,
         {
           role: 'assistant',
           content: "I'm having trouble responding right now. Please try again."
-        }
-      ]);
+        },
+      ];
+      setMessages(withError);
+      messagesRef.current = withError;
+      persistConversation(withError);
     } finally {
       if (activeRequestRef.current === requestId) {
         activeRequestRef.current = null;
         setLoading(false);
       }
     }
-  }, [input, loading, profile]);
+  }, [input, loading, profile, persistConversation]);
 
   return (
     <>
@@ -129,7 +178,7 @@ Rules:
             <ScrollArea className="flex-1 p-4" ref={scrollRef}>
               <div className="space-y-3">
 
-                {messages.length === 0 && (
+                {historyLoaded && messages.length === 0 && (
                   <p className="text-center text-muted-foreground text-sm">
                     Ask me anything about fitness or nutrition.
                   </p>

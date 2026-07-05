@@ -119,8 +119,8 @@ export default function Settings() {
             <p className="text-sm text-muted-foreground">Dark-first theme with optional light mode.</p>
           </div>
           <Button type="button" variant="outline" onClick={() => setIsDark(!isDark)}>
-            {isDark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-            {isDark ? 'Dark' : 'Light'}
+            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            {isDark ? 'Light' : 'Dark'}
           </Button>
         </div>
       </GlassCard>

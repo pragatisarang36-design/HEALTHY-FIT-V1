@@ -1,5 +1,6 @@
-const GROQ_COMPAT_SEGMENT = ['o', 'penai'].join('');
-const GROQ_CHAT_COMPLETIONS_URL = `https://api.groq.com/${GROQ_COMPAT_SEGMENT}/v1/chat/completions`;
+import { supabase } from '@/lib/supabaseClient';
+
+const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:4000';
 const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
 const DEFAULT_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 const DEBOUNCE_MS = 400;
@@ -15,7 +16,10 @@ const inFlightRequests = new Map();
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const getApiKey = () => import.meta.env.VITE_GROQ_API_KEY || '';
+const getSessionToken = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token || '';
+};
 
 const normalizeError = (error) => {
   if (error?.status === 429 || error?.code === 'rate_limit') {
@@ -31,7 +35,10 @@ const normalizeError = (error) => {
 const parseErrorResponse = async (response) => {
   try {
     const data = await response.json();
-    return data?.error?.message || response.statusText;
+    if (typeof data?.error === 'object') {
+      return data.error.message || response.statusText;
+    }
+    return data?.error || data?.message || response.statusText;
   } catch {
     return response.statusText;
   }
@@ -54,27 +61,24 @@ export const groqTextModel = () => import.meta.env.VITE_GROQ_TEXT_MODEL || DEFAU
 export const groqVisionModel = () => import.meta.env.VITE_GROQ_VISION_MODEL || DEFAULT_VISION_MODEL;
 
 const runGroqRequest = async ({ messages, responseFormat, model = groqTextModel() }) => {
-  const apiKey = getApiKey();
+  const token = await getSessionToken();
 
-  if (!apiKey || apiKey === 'your_groq_key_here') {
-    throw { code: 'missing_key', message: 'Missing VITE_GROQ_API_KEY in .env.local' };
+  if (!token) {
+    throw { code: 'unauthorized', message: 'You must be logged in to use AI features.' };
   }
 
-  const response = await fetch(GROQ_CHAT_COMPLETIONS_URL, {
+  const response = await fetch(`${BACKEND_API_URL}/api/ai/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
       Pragma: 'no-cache',
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
       model,
       messages,
-      temperature: 0.85,
-      top_p: 0.95,
-      max_tokens: 2048,
-      ...(responseFormat ? { response_format: responseFormat } : {}),
+      responseFormat,
     }),
   });
 
@@ -92,7 +96,7 @@ const runGroqRequest = async ({ messages, responseFormat, model = groqTextModel(
   }
 
   const data = await response.json();
-  return data?.choices?.[0]?.message?.content?.trim() || '';
+  return data?.text || data?.message || '';
 };
 
 const executeRequest = async (request) => {

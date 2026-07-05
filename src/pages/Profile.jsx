@@ -48,23 +48,26 @@ export default function Profile() {
 
   const [allergyInput, setAllergyInput] = useState('');
   const [dislikeInput, setDislikeInput] = useState('');
+  const hydratedProfileId = React.useRef(null);
 
   useEffect(() => {
-    if (profile) {
-      setForm({
-        name: profile.name || '',
-        age: profile.age || '',
-        gender: profile.gender || '',
-        height: profile.height || '',
-        weight: profile.weight || '',
-        target_weight: profile.target_weight || '',
-        fitness_goal: profile.fitness_goal || '',
-        diet_preference: profile.diet_preference || '',
-        food_allergies: profile.food_allergies || [],
-        food_dislikes: profile.food_dislikes || [],
-        water_goal_litres: profile.water_goal_litres || '',
-      });
-    }
+    if (!profile) return;
+    if (hydratedProfileId.current === profile.id) return;
+    hydratedProfileId.current = profile.id;
+
+    setForm({
+      name: profile.name || '',
+      age: profile.age || '',
+      gender: profile.gender || '',
+      height: profile.height || '',
+      weight: profile.weight || '',
+      target_weight: profile.target_weight || '',
+      fitness_goal: profile.fitness_goal || '',
+      diet_preference: profile.diet_preference || '',
+      food_allergies: profile.food_allergies || [],
+      food_dislikes: profile.food_dislikes || [],
+      water_goal_litres: profile.water_goal_litres || '',
+    });
   }, [profile]);
 
   const handleChange = (field, value) => {
@@ -154,7 +157,7 @@ export default function Profile() {
         </div>
       )}
 
-      <GlassCard className="space-y-5" onKeyDown={handleSaveKeyDown}>
+      <GlassCard className="space-y-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label>Name *</Label>
@@ -210,7 +213,7 @@ export default function Profile() {
 
         <div>
           <Label>Water Goal (litres/day)</Label>
-          <Input type="number" step="0.5" value={form.water_goal_litres} onChange={e => handleChange('water_goal_litres', e.target.value)} placeholder="2.5" />
+          <Input type="number" step="0.5" value={form.water_goal_litres} onChange={e => handleChange('water_goal_litres', e.target.value)} onKeyDown={handleSaveKeyDown} placeholder="2.5" />
           <p className="text-xs text-muted-foreground mt-1">
             {form.water_goal_litres ? `That's about ${Math.round(Number(form.water_goal_litres) * 5)} glasses` : 'Default: 2.5L (~12 glasses)'}
           </p>
@@ -222,7 +225,7 @@ export default function Profile() {
             <Input
               value={allergyInput}
               onChange={e => setAllergyInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addTag('food_allergies', allergyInput, setAllergyInput))}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), e.stopPropagation(), addTag('food_allergies', allergyInput, setAllergyInput))}
               placeholder="Type and press Enter"
             />
             <Button type="button" variant="outline" onClick={() => addTag('food_allergies', allergyInput, setAllergyInput)}>Add</Button>
@@ -242,7 +245,7 @@ export default function Profile() {
             <Input
               value={dislikeInput}
               onChange={e => setDislikeInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addTag('food_dislikes', dislikeInput, setDislikeInput))}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), e.stopPropagation(), addTag('food_dislikes', dislikeInput, setDislikeInput))}
               placeholder="Type and press Enter"
             />
             <Button type="button" variant="outline" onClick={() => addTag('food_dislikes', dislikeInput, setDislikeInput)}>Add</Button>

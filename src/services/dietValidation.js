@@ -14,6 +14,23 @@ const textIncludes = (meal, terms) => {
 };
 
 export const parseDietPreferences = ({ profile = {}, filters = [], customPreference = '' }) => {
+  const strict = new Set(filters.map(norm));
+  const addIf = (condition, tag) => condition && strict.add(tag);
+
+  const dietPref = norm(profile.diet_preference);
+  if (/^non[_\s]?veg(etarian)?$/.test(dietPref)) strict.add('non_veg');
+  else if (/^vegan$/.test(dietPref)) strict.add('vegan');
+  else if (/^(jain|jain[_\s]?vegan)$/.test(dietPref)) strict.add('jain');
+  else if (/^veg(etarian)?$/.test(dietPref)) strict.add('vegetarian');
+  else if (/^eggetarian$/.test(dietPref)) strict.add('eggetarian');
+  else if (/^pescatarian$/.test(dietPref)) strict.add('pescatarian');
+
+  const customRaw = String(customPreference || '').toLowerCase();
+  addIf(/\bvegan\b/.test(customRaw), 'vegan');
+  addIf(/\bjain\b/.test(customRaw), 'jain');
+  addIf(/\bvegetarian\b/.test(customRaw) && !/non[_\s-]?veg/.test(customRaw), 'vegetarian');
+  addIf(/non[_\s-]?veg|non[_\s-]?vegetarian/.test(customRaw), 'non_veg');
+
   const raw = [
     profile.diet_preference,
     ...(profile.food_allergies || []),
@@ -22,13 +39,6 @@ export const parseDietPreferences = ({ profile = {}, filters = [], customPrefere
     customPreference,
   ].filter(Boolean).join(' ').toLowerCase();
 
-  const strict = new Set(filters.map(norm));
-  const addIf = (condition, tag) => condition && strict.add(tag);
-
-  const asksNonVeg = /non[_\s-]?veg|non[_\s-]?vegetarian|chicken|fish|meat/.test(raw);
-  addIf(/vegetarian|veg\b/.test(raw) && !asksNonVeg, 'vegetarian');
-  addIf(asksNonVeg, 'non_veg');
-  addIf(/vegan/.test(raw), 'vegan');
   addIf(/dairy[_\s-]?free|no dairy|milk allergy|lactose/.test(raw), 'dairy_free');
   addIf(/gluten[_\s-]?free|no gluten|wheat allergy|celiac/.test(raw), 'gluten_free');
   addIf(/jain|no onion garlic|no onion|no garlic|root vegetable/.test(raw), 'jain');
@@ -44,7 +54,9 @@ export const parseDietPreferences = ({ profile = {}, filters = [], customPrefere
 
   const allergies = new Set((profile.food_allergies || []).map(norm));
   for (const allergen of MAJOR_ALLERGENS) {
-    if (raw.includes(allergen.replace('_', ' ')) || raw.includes(allergen)) allergies.add(allergen);
+    const term = allergen.replace('_', ' ');
+    const explicitPattern = new RegExp(`(allerg\\w*\\s+to\\s+${term}|avoid\\w*\\s+${term}|no\\s+${term}|without\\s+${term})`, 'i');
+    if (explicitPattern.test(customRaw)) allergies.add(allergen);
   }
   if (strict.has('dairy_free')) allergies.add('milk');
   if (strict.has('gluten_free')) allergies.add('wheat');

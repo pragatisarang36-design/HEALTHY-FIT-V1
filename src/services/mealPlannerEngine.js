@@ -83,7 +83,7 @@ export async function generateRuleBasedMealPlan(profile, options = {}) {
   const rules = parseDietPreferences({ profile, filters, customPreference });
   const daysCount = planType === '7_day' ? 7 : 1;
   const planSeed = seed || `${profile?.id || profile?.name || 'user'}:${new Date().toISOString().slice(0, 10)}:${recentPlans.length}:${Math.random()}`;
-  const recentIds = recentMealIds(recentPlans).size > 12 ? new Set() : recentMealIds(recentPlans);
+  const recentIds = recentMealIds(recentPlans);
   const filteredMeals = localMealDatabase.filter((meal) => validateMealAgainstDiet(meal, rules));
 
   const candidatesByType = MEAL_TYPES.reduce((acc, type) => {
