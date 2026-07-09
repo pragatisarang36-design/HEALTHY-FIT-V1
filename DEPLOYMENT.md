@@ -18,6 +18,7 @@ Use this checklist when testing HealthyFit outside local development. Do not dep
 ## Frontend
 
 - Set `VITE_BACKEND_API_URL` in the actual frontend build environment, such as `.env.local` for local builds or the host/build system environment for deployed builds.
+- If `@healthyfit/food-resolver` is in a private git repo, configure the build environment so `npm install` can fetch it before deploying. On Render, add the repo access method manually before the first build: either use an SSH deploy key with a git SSH dependency URL, or use a GitHub token stored as a Render environment variable and injected by the build process. Avoid committing tokens into `package.json` or lockfiles.
 - Rebuild the web app after changing `VITE_BACKEND_API_URL`.
 - Rebuild the Capacitor Android bundle after changing `VITE_BACKEND_API_URL`.
 
