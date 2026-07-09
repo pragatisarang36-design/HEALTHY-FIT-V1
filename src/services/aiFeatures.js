@@ -141,10 +141,14 @@ Use confidence "high", "medium", or "low" for each ingredient portion.`;
       ],
     });
 
-    return result.ok ? result.data : null;
+    if (!result.ok) {
+      throw new Error(result.message || AI_FALLBACK_MESSAGE);
+    }
+
+    return result.data;
   } catch (error) {
     console.error('Food image analysis failed:', error);
-    return null;
+    throw error;
   }
 }
 

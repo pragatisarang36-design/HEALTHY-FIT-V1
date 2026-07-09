@@ -78,3 +78,10 @@ blob-report/
 .env
 .env.local
 .env.*.local
+
+# android build artifacts
+android/app/build
+android/.gradle
+android/local.properties
+android/app/release
+*.keystore

@@ -49,11 +49,27 @@ const chunk = (items, size) => {
 const upsertBatched = async (table, rows, onConflict) => {
   if (!rows.length) return 0;
   let written = 0;
-  for (const batch of chunk(rows, 500)) {
-    const query = supabase.from(table).upsert(batch, onConflict ? { onConflict } : undefined);
-    const { error } = await query;
-    if (error) throw new Error(`${table} upsert failed: ${error.message}`);
-    written += batch.length;
+  for (const batch of chunk(rows, 1500)) {
+    let attempt = 0;
+    const maxAttempts = 3;
+    while (attempt < maxAttempts) {
+      try {
+        const query = supabase.from(table).upsert(batch, onConflict ? { onConflict } : undefined);
+        const { error } = await query;
+        if (error) throw new Error(`${table} upsert failed: ${error.message}`);
+        written += batch.length;
+        break;
+      } catch (err) {
+        attempt += 1;
+        console.warn(`[RETRY] Batch upsert to ${table} failed (attempt ${attempt}/${maxAttempts}):`, err.message, err.cause || '');
+        if (err.stack) console.warn(err.stack);
+        if (attempt === maxAttempts) {
+          throw err;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
   }
   return written;
 };
@@ -69,7 +85,7 @@ const sourceIds = await sourceKeyToId();
 
 const { data: batchRow, error: batchError } = await supabase
   .from('master_import_batches')
-  .insert({
+  .upsert({
     id: batchMeta.id,
     dataset_name: 'master_etl',
     dataset_version: '1.0.0',

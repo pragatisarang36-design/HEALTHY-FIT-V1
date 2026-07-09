@@ -58,6 +58,9 @@ const withoutColumns = (payload, columns) => {
 const missingMealPlanColumns = (error) =>
   ['plan_type', 'filter', 'date_generated'].filter((column) => isMissingColumnError(error, column));
 
+const missingOptionalPayloadColumns = (error, payload) =>
+  ['notes', 'photo_url', 'resolved'].filter((column) => isMissingColumnError(error, column) && Object.hasOwn(payload, column));
+
 const normalizeBase = (row, user) => ({
   ...row,
   created_by: user?.email,
@@ -191,9 +194,9 @@ const tableStore = ({ table, select = '*', normalize, toInsert, toUpdate, baseFi
     const user = await currentUser();
     const payload = toInsert(data, user);
     let { data: row, error } = await supabase.from(table).insert(payload).select(select).single();
-    const missingOptionalPayloadColumns = ['notes', 'photo_url'].filter((column) => isMissingColumnError(error, column) && Object.hasOwn(payload, column));
-    if (error && missingOptionalPayloadColumns.length > 0) {
-      const payloadWithoutMissing = withoutColumns(payload, missingOptionalPayloadColumns);
+    const optionalPayloadColumns = missingOptionalPayloadColumns(error, payload);
+    if (error && optionalPayloadColumns.length > 0) {
+      const payloadWithoutMissing = withoutColumns(payload, optionalPayloadColumns);
       ({ data: row, error } = await supabase.from(table).insert(payloadWithoutMissing).select(select).single());
     }
     const optionalMissingColumns = table === 'meal_plans' ? missingMealPlanColumns(error) : [];
@@ -214,6 +217,16 @@ const tableStore = ({ table, select = '*', normalize, toInsert, toUpdate, baseFi
       .eq(keyField, id)
       .select(select)
       .single();
+    const optionalPayloadColumns = missingOptionalPayloadColumns(error, payload);
+    if (error && optionalPayloadColumns.length > 0) {
+      const payloadWithoutMissing = withoutColumns(payload, optionalPayloadColumns);
+      ({ data: row, error } = await supabase
+        .from(table)
+        .update(payloadWithoutMissing)
+        .eq(keyField, id)
+        .select(select)
+        .single());
+    }
     const optionalMissingColumns = table === 'meal_plans' ? missingMealPlanColumns(error) : [];
     if (error && optionalMissingColumns.length > 0) {
       const payloadWithoutMissingColumns = withoutColumns(payload, optionalMissingColumns);
@@ -415,6 +428,7 @@ const Meal = tableStore({
         meal_type: row.meal_type || 'snack',
         notes: row.notes || row.description || '',
         photo_url: row.photo_url || '',
+        resolved: row.resolved !== false,
       },
       user
     ),
@@ -428,6 +442,7 @@ const Meal = tableStore({
     protein: Number(data.protein) || 0,
     carbs: Number(data.carbs) || 0,
     fats: Number(data.fats) || 0,
+    resolved: data.resolved !== false,
     ...(data.notes ? { notes: String(data.notes).trim() } : {}),
     ...(data.photo_url ? { photo_url: String(data.photo_url) } : {}),
   }),
@@ -440,6 +455,7 @@ const Meal = tableStore({
     protein: Number(data.protein) || 0,
     carbs: Number(data.carbs) || 0,
     fats: Number(data.fats) || 0,
+    resolved: data.resolved !== false,
     notes: data.notes ? String(data.notes).trim() : null,
     photo_url: data.photo_url || null,
   }),
@@ -461,6 +477,7 @@ const FoodEstimate = tableStore({
         times_used: Number(row.times_used) || 0,
         verified_by_user: row.verified_by_user !== false,
         ingredients: Array.isArray(row.ingredients) ? row.ingredients : [],
+        resolved: row.resolved !== false,
       },
       user
     ),
@@ -478,6 +495,7 @@ const FoodEstimate = tableStore({
     times_used: Number(data.times_used) || 1,
     verified_by_user: data.verified_by_user !== false,
     ingredients: data.ingredients || [],
+    resolved: data.resolved !== false,
   }),
   toUpdate: (data) => ({
     normalized_name: String(data.normalized_name || data.food_name || 'meal').trim().toLowerCase(),
@@ -492,6 +510,7 @@ const FoodEstimate = tableStore({
     times_used: Number(data.times_used) || 1,
     verified_by_user: data.verified_by_user !== false,
     ingredients: data.ingredients || [],
+    resolved: data.resolved !== false,
   }),
 });
 

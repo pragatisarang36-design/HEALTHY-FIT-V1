@@ -8,6 +8,8 @@ create extension if not exists pg_trgm;
 alter table public.meals add column if not exists notes text;
 alter table public.meals add column if not exists date date default current_date;
 alter table public.meals add column if not exists photo_url text;
+alter table public.meals add column if not exists resolved boolean default true;
+alter table public.food_estimates add column if not exists resolved boolean default true;
 alter table public.meal_plans add column if not exists plan_json jsonb default '{}'::jsonb;
 alter table public.meal_plans add column if not exists plan_data jsonb;
 alter table public.meal_plans add column if not exists plan_type text;

@@ -68,6 +68,7 @@ const normalizeIngredients = (ingredients = []) =>
           portion_confidence: ingredient?.portion_confidence || ingredient?.confidence || '',
           _needsCalculation: ingredient?._needsCalculation === true,
           _needsQuantity: ingredient?._needsQuantity === true,
+          resolved: ingredient?.resolved !== false && ingredient?._needsCalculation !== true && ingredient?._needsQuantity !== true,
         }))
         .filter((ingredient) => ingredient.name || ingredient.quantity)
     : [];
@@ -85,6 +86,30 @@ const hasManualMacros = (manualMacros) =>
   ['calories', 'protein', 'carbs', 'fats'].some((key) => manualMacros[key] !== '');
 
 const hasIngredients = (meal) => normalizeIngredients(meal?.ingredients).length > 0;
+
+const macroDisplay = (value, suffix = '') => {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${suffix === ' kcal' ? Math.round(number) : number.toFixed(1)}${suffix}` : 'unknown';
+};
+
+const mealHasUnresolvedIngredients = (meal) =>
+  normalizeIngredients(meal?.ingredients).some((ingredient) =>
+    ingredient.resolved === false ||
+    ingredient._needsCalculation ||
+    ingredient._needsQuantity
+  );
+
+const hasCompleteTopLevelMacros = (meal) =>
+  Number(meal?.calories) > 0 &&
+  MACRO_KEYS.every((key) => {
+    const value = Number(meal?.[key]);
+    return Number.isFinite(value) && value >= 0;
+  });
+
+const hasManualResolvedTotals = (meal) =>
+  meal?._manualMacroOverride === true &&
+  meal?.resolved === true &&
+  hasCompleteTopLevelMacros(meal);
 
 const mealNeedsQuantity = (meal) =>
   meal?.source === 'needs_quantity' ||
@@ -194,19 +219,27 @@ const enforceExplicitUserComponents = (nutrition, userText) => {
   return withIngredientTotals({ ...nutrition }, ingredients);
 };
 
+const editableMacroValue = (value, key) => {
+  if (value === '' || value === null || value === undefined) return '';
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '';
+  return key === 'calories' ? String(Math.round(number)) : String(number);
+};
+
 const editableMeal = (meal) => ({
   ...meal,
   food_name: meal.food_name || 'Meal',
   quantity: meal.quantity || '1 serving',
-  calories: String(Math.round(Number(meal.calories) || 0)),
-  protein: String(Number(meal.protein || 0)),
-  carbs: String(Number(meal.carbs || 0)),
-  fats: String(Number(meal.fats || 0)),
+  calories: editableMacroValue(meal.calories, 'calories'),
+  protein: editableMacroValue(meal.protein, 'protein'),
+  carbs: editableMacroValue(meal.carbs, 'carbs'),
+  fats: editableMacroValue(meal.fats, 'fats'),
   ingredients: Array.isArray(meal.ingredients) ? meal.ingredients : [],
   source: meal.source || 'manual',
   sourceLabel: meal.sourceLabel || 'Manual',
   confidence: meal.confidence,
   assumptionSource: meal.assumptionSource || '',
+  resolved: meal.resolved !== false && !mealHasUnresolvedIngredients(meal),
 });
 
 const ingredientTotals = (ingredients = []) =>
@@ -222,6 +255,11 @@ const ingredientTotals = (ingredients = []) =>
 
 const withIngredientTotals = (meal, ingredients) => {
   const totals = ingredientTotals(ingredients);
+  const resolved = ingredients.every((ingredient) =>
+    ingredient?.resolved !== false &&
+    ingredient?._needsCalculation !== true &&
+    ingredient?._needsQuantity !== true
+  );
   return {
     ...meal,
     ingredients,
@@ -229,6 +267,7 @@ const withIngredientTotals = (meal, ingredients) => {
     protein: String(Number(totals.protein.toFixed(1))),
     carbs: String(Number(totals.carbs.toFixed(1))),
     fats: String(Number(totals.fats.toFixed(1))),
+    resolved,
   };
 };
 
@@ -239,6 +278,7 @@ const toNumberMacros = (meal) => ({
   carbs: Number(meal.carbs) || 0,
   fats: Number(meal.fats) || 0,
   ingredients: normalizeIngredients(meal.ingredients),
+  resolved: meal.resolved === true || !mealHasUnresolvedIngredients(meal),
 });
 
 const parseGrams = (quantityText, fallback = 100) => {
@@ -483,6 +523,7 @@ const openFoodFactsProduct = async (barcode) => {
   const response = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`, {
     headers: { Accept: 'application/json' },
   });
+  if (response.status === 404) return null;
   if (!response.ok) throw new Error('Barcode lookup failed. Please try again.');
   const data = await response.json();
   if (data.status !== 1 || !data.product) return null;
@@ -809,7 +850,11 @@ export default function MealTracker() {
   };
 
   const updatePendingField = (field, value) => {
-    setPendingMeal((meal) => ({ ...meal, [field]: value }));
+    setPendingMeal((meal) => ({
+      ...meal,
+      [field]: value,
+      ...(MACRO_KEYS.includes(field) ? { resolved: true, _manualMacroOverride: true } : {}),
+    }));
     setPendingMealDirty(true);
     setReviewChangedLog(false);
   };
@@ -820,7 +865,8 @@ export default function MealTracker() {
       ingredients[index] = {
         ...ingredients[index],
         [key]: value,
-        ...(key === 'name' || key === 'quantity' ? { _needsCalculation: true, _needsQuantity: false } : {}),
+        ...(key === 'name' || key === 'quantity' ? { _needsCalculation: true, _needsQuantity: false, resolved: false } : {}),
+        ...(MACRO_KEYS.includes(key) ? { _needsCalculation: false, _needsQuantity: false, resolved: true } : {}),
       };
       return MACRO_KEYS.includes(key) ? withIngredientTotals(meal, ingredients) : { ...meal, ingredients };
     });
@@ -835,8 +881,9 @@ export default function MealTracker() {
       ...meal,
       ingredients: [
         ...(meal?.ingredients || []),
-        { _rowId: crypto.randomUUID(), name: '', quantity: '', calories: 0, protein: 0, carbs: 0, fats: 0, _needsCalculation: true, _needsQuantity: false },
+        { _rowId: crypto.randomUUID(), name: '', quantity: '', calories: 0, protein: 0, carbs: 0, fats: 0, _needsCalculation: true, _needsQuantity: false, resolved: false },
       ],
+      resolved: false,
     }));
     setPendingMealDirty(true);
     setReviewChangedLog(false);
@@ -891,6 +938,7 @@ export default function MealTracker() {
             fats: 0,
             _needsCalculation: true,
             _needsQuantity: true,
+            resolved: false,
           };
           return withIngredientTotals(meal, ingredients);
         });
@@ -916,6 +964,7 @@ export default function MealTracker() {
           fats: nutrition.fats,
           _needsCalculation: false,
           _needsQuantity: false,
+          resolved: true,
         };
         return withIngredientTotals(meal, ingredients);
       });
@@ -1092,7 +1141,7 @@ export default function MealTracker() {
         ? result.ingredients.filter((ingredient) => String(ingredient?.name || '').trim())
         : [];
 
-      if (result?.is_food === false || Number(result?.confidence ?? 1) < 0.45 || identifiedIngredients.length === 0) {
+      if (result?.is_food === false || Number(result?.confidence ?? 1) < 0.35 || identifiedIngredients.length === 0) {
         throw new Error(result?.reason || 'This does not look like a clear food photo. Please upload a meal photo or use manual entry.');
       }
 
@@ -1186,6 +1235,7 @@ export default function MealTracker() {
           notes: mealNotes.trim() || null,
           source: 'manual_barcode',
           barcode: barcodeValue,
+          resolved: false,
         }, 'New barcode product');
         return;
       }
@@ -1223,6 +1273,7 @@ export default function MealTracker() {
           notes: mealNotes.trim() || null,
           source: 'manual_barcode',
           barcode: barcodeValue,
+          resolved: false,
         }, `${sourceLabel} product`);
         return;
       }
@@ -1344,7 +1395,7 @@ export default function MealTracker() {
   };
 
   const handleSaveMealClick = async () => {
-    if (pendingMeal?.ingredients?.some((ingredient) => ingredient?._needsQuantity)) {
+    if (pendingMeal?.ingredients?.some((ingredient) => ingredient?._needsQuantity) && !hasManualResolvedTotals(pendingMeal)) {
       toast({
         title: 'Enter grams or package size',
         description: 'For branded products, change 1 to something like 40g, 80g, or the pack weight.',
@@ -1355,7 +1406,27 @@ export default function MealTracker() {
 
     const calculated = await calculateNeededIngredients();
     if (!calculated) {
-      toast({ title: 'Could not calculate all ingredients', description: 'Check ingredient names and quantities.', variant: 'destructive' });
+      if (mealHasUnresolvedIngredients(pendingMeal) && hasManualResolvedTotals(pendingMeal)) {
+        setPendingMeal((meal) => ({ ...meal, resolved: true }));
+      } else if (mealHasUnresolvedIngredients(pendingMeal) || pendingMeal?.resolved === false) {
+        toast({
+          title: 'Some ingredients could not be calculated',
+          description: 'Please fill in the missing ingredient macros or enter the total macros manually.',
+          variant: 'destructive',
+        });
+        return;
+      } else {
+        toast({ title: 'Could not calculate all ingredients', description: 'Check ingredient names and quantities.', variant: 'destructive' });
+        return;
+      }
+    }
+
+    if ((pendingMeal?.resolved === false || mealHasUnresolvedIngredients(pendingMeal)) && !hasManualResolvedTotals(pendingMeal)) {
+      toast({
+        title: 'Some ingredients could not be calculated',
+        description: 'Please fill in the missing ingredient macros or enter the total macros manually.',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -1413,6 +1484,11 @@ export default function MealTracker() {
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <p className="text-sm font-semibold">{m.food_name}</p>
                   <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{m.meal_type}</p>
+                  {m.resolved === false && (
+                    <span className="rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                      Estimated/Incomplete
+                    </span>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <span>{m.quantity}</span>
@@ -1421,19 +1497,19 @@ export default function MealTracker() {
                 <div className="grid grid-cols-4 gap-1.5">
                   <div className="rounded-md bg-muted/60 px-2 py-1.5">
                     <p className="text-[10px] text-muted-foreground">Calories</p>
-                    <p className="text-xs font-semibold">{Math.round(Number(m.calories) || 0)} kcal</p>
+                    <p className="text-xs font-semibold">{m.resolved === false ? 'unknown' : macroDisplay(m.calories, ' kcal')}</p>
                   </div>
                   <div className="rounded-md bg-muted/60 px-2 py-1.5">
                     <p className="text-[10px] text-muted-foreground">Protein</p>
-                    <p className="text-xs font-semibold">{Number(m.protein || 0).toFixed(1)}g</p>
+                    <p className="text-xs font-semibold">{m.resolved === false ? 'unknown' : macroDisplay(m.protein, 'g')}</p>
                   </div>
                   <div className="rounded-md bg-muted/60 px-2 py-1.5">
                     <p className="text-[10px] text-muted-foreground">Carbs</p>
-                    <p className="text-xs font-semibold">{Number(m.carbs || 0).toFixed(1)}g</p>
+                    <p className="text-xs font-semibold">{m.resolved === false ? 'unknown' : macroDisplay(m.carbs, 'g')}</p>
                   </div>
                   <div className="rounded-md bg-muted/60 px-2 py-1.5">
                     <p className="text-[10px] text-muted-foreground">Fats</p>
-                    <p className="text-xs font-semibold">{Number(m.fats || 0).toFixed(1)}g</p>
+                    <p className="text-xs font-semibold">{m.resolved === false ? 'unknown' : macroDisplay(m.fats, 'g')}</p>
                   </div>
                 </div>
               </div>
@@ -1686,6 +1762,9 @@ export default function MealTracker() {
             <div className="space-y-3">
               <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                 <p className="font-medium text-foreground">{pendingMeal.sourceLabel}</p>
+                {pendingMeal.resolved === false && (
+                  <p className="font-medium text-amber-700">Estimated/Incomplete</p>
+                )}
                 {pendingMeal.assumptionSource && <p>Assumptions: {pendingMeal.assumptionSource}</p>}
                 {pendingMeal.confidence !== undefined && pendingMeal.confidence !== null && (
                   <p>Confidence: {Math.round(Number(pendingMeal.confidence) * 100)}%</p>
@@ -1777,8 +1856,10 @@ export default function MealTracker() {
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {ingredient._needsQuantity ? 'Needs grams or package size - ' : ingredient._needsCalculation ? 'Needs calculation - ' : ''}
-                          {Math.round(Number(ingredient.calories) || 0)} kcal - P:{Number(ingredient.protein || 0).toFixed(1)} C:{Number(ingredient.carbs || 0).toFixed(1)} F:{Number(ingredient.fats || 0).toFixed(1)}
+                          {ingredient._needsQuantity ? 'Needs grams or package size - ' : ingredient._needsCalculation || ingredient.resolved === false ? 'Needs calculation - ' : ''}
+                          {ingredient.resolved === false || ingredient._needsCalculation || ingredient._needsQuantity
+                            ? 'unknown macros'
+                            : `${macroDisplay(ingredient.calories, ' kcal')} - P:${macroDisplay(ingredient.protein, 'g')} C:${macroDisplay(ingredient.carbs, 'g')} F:${macroDisplay(ingredient.fats, 'g')}`}
                         </p>
                       </div>
                     ))}
