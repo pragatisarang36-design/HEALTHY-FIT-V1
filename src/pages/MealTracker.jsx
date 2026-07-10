@@ -403,6 +403,8 @@ export default function MealTracker() {
   const [barcode, setBarcode] = useState('');
   const [barcodeQuantity, setBarcodeQuantity] = useState('');
   const [barcodeProcessing, setBarcodeProcessing] = useState(false);
+  const [barcodeMacroChoice, setBarcodeMacroChoice] = useState(null);
+  const [barcodeMacroChoiceProcessing, setBarcodeMacroChoiceProcessing] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [scannerActive, setScannerActive] = useState(false);
   const [scannerStatus, setScannerStatus] = useState('');
@@ -698,6 +700,105 @@ export default function MealTracker() {
       }
     } catch (error) {
       console.warn('Could not save custom product:', error?.message || error);
+    }
+  };
+
+  const productLabel = (product = {}) =>
+    [product.brand, product.product_name].filter(Boolean).join(' ') ||
+    product.product_name ||
+    product.name ||
+    '';
+
+  const openBarcodeMacroChoice = ({ barcodeValue, product = {}, sourceLabel = 'Barcode product', quantityText }) => {
+    setShowAdd(false);
+    setBarcodeMacroChoice({
+      barcode: barcodeValue,
+      product: {
+        barcode: product.barcode || barcodeValue,
+        product_name: product.product_name || '',
+        brand: product.brand || '',
+        serving_size: product.serving_size || quantityText || '100g',
+        serving_quantity: product.serving_quantity || parseGrams(quantityText || product.serving_size, 100),
+        source: product.source || 'barcode_product_identity',
+      },
+      sourceLabel,
+      quantity: quantityText || product.serving_size || barcodeQuantity.trim() || '100g',
+      productName: productLabel(product),
+    });
+  };
+
+  const stageManualBarcodeMacros = (choice = barcodeMacroChoice) => {
+    if (!choice) return;
+    const productName = String(choice.productName || '').trim();
+    const product = {
+      ...choice.product,
+      product_name: productName || choice.product?.product_name || 'Unknown product',
+    };
+
+    setBarcodeMacroChoice(null);
+    stageMealForConfirmation({
+      food_name: productLabel(product) || productName || 'Unknown product',
+      quantity: choice.quantity || '100g',
+      calories: '',
+      protein: '',
+      carbs: '',
+      fats: '',
+      meal_type: selectedMealType(),
+      notes: mealNotes.trim() || null,
+      source: 'manual_barcode',
+      barcode: choice.barcode,
+      resolved: false,
+    }, productName ? `${choice.sourceLabel} product` : 'New barcode product');
+  };
+
+  const stageAiBarcodeEstimate = async () => {
+    if (!barcodeMacroChoice || barcodeMacroChoiceProcessing) return;
+    const productName = String(barcodeMacroChoice.productName || '').trim();
+    if (!productName) {
+      toast({ title: 'Enter a product name first', variant: 'destructive' });
+      return;
+    }
+
+    setBarcodeMacroChoiceProcessing(true);
+    try {
+      const quantityText = barcodeMacroChoice.quantity || '100g';
+      const nutrition = await estimateNutritionFromFreeSources(productName, quantityText);
+      const normalized = normalizeNutrition(nutrition, productName, quantityText, { preserveName: true, preserveQuantity: true });
+      if (!normalized) throw new Error('AI could not estimate this barcode product.');
+
+      const product = {
+        ...barcodeMacroChoice.product,
+        product_name: productName,
+        serving_size: quantityText,
+        ...macrosToPer100g({ ...normalized, quantity: quantityText }),
+        source: 'barcode_ai_estimate',
+      };
+
+      setBarcodeMacroChoice(null);
+      stageMealForConfirmation({
+        ...normalized,
+        ingredients: hasIngredients(normalized)
+          ? normalized.ingredients
+          : [{
+            name: productName,
+            quantity: quantityText,
+            calories: normalized.calories,
+            protein: normalized.protein,
+            carbs: normalized.carbs,
+            fats: normalized.fats,
+          }],
+        meal_type: selectedMealType(),
+        notes: mealNotes.trim() || null,
+        source: 'barcode_ai_estimate',
+        barcode: barcodeMacroChoice.barcode,
+        product,
+        confidence: 0.45,
+        resolved: false,
+      }, 'Rough AI barcode estimate');
+    } catch (error) {
+      toast({ title: error.message || 'Could not estimate barcode product', variant: 'destructive' });
+    } finally {
+      setBarcodeMacroChoiceProcessing(false);
     }
   };
 
@@ -1077,22 +1178,14 @@ export default function MealTracker() {
       if (!product) {
         toast({
           title: 'Product not found',
-          description: 'Enter the label macros once and this barcode will be saved for next time.',
-          variant: 'destructive',
+          description: 'Enter the product name, then choose label macros or a rough AI estimate.',
         });
-        stageMealForConfirmation({
-          food_name: 'Unknown product',
-          quantity: barcodeQuantity.trim() || '100g',
-          calories: '',
-          protein: '',
-          carbs: '',
-          fats: '',
-          meal_type: selectedMealType(),
-          notes: mealNotes.trim() || null,
-          source: 'manual_barcode',
-          barcode: barcodeValue,
-          resolved: false,
-        }, 'New barcode product');
+        openBarcodeMacroChoice({
+          barcodeValue,
+          product: {},
+          sourceLabel: 'New barcode product',
+          quantityText: barcodeQuantity.trim() || '100g',
+        });
         return;
       }
 
@@ -1101,22 +1194,15 @@ export default function MealTracker() {
 
       if (macros.calories <= 0) {
         toast({
-          title: 'Add label macros',
-          description: 'No trusted nutrition source had macros for this barcode yet. Enter them once and this barcode will be saved.',
+          title: 'Nutrition label not found',
+          description: 'Choose label macros for accuracy or a rough AI estimate for convenience.',
         });
-        stageMealForConfirmation({
-          food_name: [product.brand, product.product_name].filter(Boolean).join(' ') || product.product_name || 'Unknown product',
-          quantity: quantityText,
-          calories: '',
-          protein: '',
-          carbs: '',
-          fats: '',
-          meal_type: selectedMealType(),
-          notes: mealNotes.trim() || null,
-          source: 'manual_barcode',
-          barcode: barcodeValue,
-          resolved: false,
-        }, `${sourceLabel} product`);
+        openBarcodeMacroChoice({
+          barcodeValue,
+          product,
+          sourceLabel,
+          quantityText,
+        });
         return;
       }
 
@@ -1232,7 +1318,7 @@ export default function MealTracker() {
               brand: '',
               serving_size: meal.quantity || '100g',
               ...macrosToPer100g(meal),
-              source: 'manual_barcode',
+              source: meal.source || 'manual_barcode',
             })
             : Promise.resolve(),
       ]).finally(() => {
@@ -1599,6 +1685,54 @@ export default function MealTracker() {
               </Button>
             </TabsContent>
           </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!barcodeMacroChoice} onOpenChange={(open) => !open && setBarcodeMacroChoice(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nutrition label not found</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground">{barcodeMacroChoice?.sourceLabel || 'Barcode product'}</p>
+              <p>Barcode: {barcodeMacroChoice?.barcode}</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="barcode-choice-product-name">
+                Product name
+              </label>
+              <Input
+                id="barcode-choice-product-name"
+                value={barcodeMacroChoice?.productName || ''}
+                onChange={(event) => setBarcodeMacroChoice((choice) => choice ? { ...choice, productName: event.target.value } : choice)}
+                placeholder="Enter product name from the package"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="barcode-choice-quantity">
+                Quantity
+              </label>
+              <Input
+                id="barcode-choice-quantity"
+                value={barcodeMacroChoice?.quantity || ''}
+                onChange={(event) => setBarcodeMacroChoice((choice) => choice ? { ...choice, quantity: event.target.value } : choice)}
+                placeholder="50g"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Label macros are most accurate. A rough AI estimate is editable, saved as low-confidence, and should be corrected when the package label is available.
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => stageManualBarcodeMacros()} disabled={barcodeMacroChoiceProcessing}>
+              Enter Label Macros
+            </Button>
+            <Button onClick={stageAiBarcodeEstimate} disabled={barcodeMacroChoiceProcessing}>
+              {barcodeMacroChoiceProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {barcodeMacroChoiceProcessing ? 'Estimating...' : 'Use Rough AI Estimate'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
