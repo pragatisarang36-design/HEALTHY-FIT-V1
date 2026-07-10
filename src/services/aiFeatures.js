@@ -124,7 +124,23 @@ If an egg is cut in half, name it "boiled egg" and set quantity by the whole egg
 For mixed plates with many small items, prefer small conservative estimates like "20g", "30g", "50g", "70g", or "90g".
 Do not assign 150g+ to a single fruit or vegetable unless it visibly occupies a large part of the plate.
 If quantity is uncertain, choose the lower reasonable visible estimate.
-Use confidence "high", "medium", or "low" for each ingredient portion.`;
+Use confidence "high", "medium", or "low" for each ingredient portion.
+
+Optional reference-object detection for future portion estimation:
+Also check whether the photo contains a supported scale reference object near the food. This is optional metadata only and must not change food identification.
+Supported reference objects, in priority order:
+1. Standard card: any card with the standard card outline/shape, including debit, credit, ID, loyalty, gym membership, or similar cards. Use only the outline/shape, never read or report printed card details.
+2. Coin: current Indian 1, 2, 5, or 10 rupee coin.
+3. A4 or Letter paper sheet.
+If a supported reference is clearly visible, set reference_detected true, reference_type to "card", "coin", or "paper", and reference_subtype as follows:
+- card: reference_subtype null.
+- coin: "1_rupee", "2_rupee", "5_rupee", "10_rupee", or "unknown".
+- paper: "a4", "letter", or "unknown".
+If no supported reference object is clearly visible, set reference_detected false and reference_type/reference_subtype null.
+Only when reference_detected is true, include area_ratio_to_reference and thickness_bucket for each ingredient:
+- area_ratio_to_reference: estimated visible 2D area of that ingredient divided by the visible 2D area of the reference object.
+- thickness_bucket: "thin", "medium", or "thick".
+If reference_detected is false, these ingredient reference fields may be null or absent.`;
 
   try {
     const result = await requestAIJson({
@@ -236,6 +252,12 @@ const foodIdentificationSchema = () => ({
     quantity: { type: 'string' },
     meal_size_estimate_g: { type: 'number' },
     container_type: { type: 'string' },
+    reference_detected: { type: 'boolean' },
+    reference_type: { type: ['string', 'null'], enum: ['card', 'coin', 'paper', null] },
+    reference_subtype: {
+      type: ['string', 'null'],
+      enum: ['1_rupee', '2_rupee', '5_rupee', '10_rupee', 'unknown', 'a4', 'letter', null],
+    },
     ingredients: {
       type: 'array',
       items: {
@@ -246,6 +268,8 @@ const foodIdentificationSchema = () => ({
           visible_share_percent: { type: 'number' },
           estimated_grams: { type: 'number' },
           confidence: { type: 'string' },
+          area_ratio_to_reference: { type: ['number', 'null'] },
+          thickness_bucket: { type: ['string', 'null'], enum: ['thin', 'medium', 'thick', null] },
         },
       },
     },

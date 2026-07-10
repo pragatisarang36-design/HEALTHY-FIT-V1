@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { analyzeFoodImage, estimateNutrition, retryEstimateNutrition } from '@/services/aiFeatures';
 import { calculateMealFromIdentifiedIngredients, estimateIngredientFromFreeSources, estimateNutritionFromFreeSources } from '@/services/nutritionEngine';
 import { normalizeSearchKey } from '@/services/foodIntelligence';
+import { confidenceForReferenceType, densityKeyForFoodName, estimateGrams } from '@/services/portionEstimation';
 import { supabase } from '@/lib/supabaseClient';
 import { useEnterSubmit } from '@/hooks/useEnterSubmit';
 
@@ -28,6 +29,62 @@ const firstValue = (...values) => values.find((value) => value !== undefined && 
 const readMacro = (nutrition, key) => {
   const macros = nutrition?.nutrition || nutrition?.macros || nutrition?.nutrients || {};
   return Number(firstValue(nutrition?.[key], macros?.[key]));
+};
+
+const hasReferencePortionInputs = (ingredient) =>
+  Number.isFinite(Number(ingredient?.area_ratio_to_reference)) &&
+  Boolean(ingredient?.thickness_bucket);
+
+const applyReferencePortionEstimates = (visionResult, ingredients) => {
+  if (visionResult?.reference_detected !== true) return ingredients;
+
+  return ingredients.map((ingredient) => {
+    if (!hasReferencePortionInputs(ingredient)) return ingredient;
+
+    const grams = estimateGrams({
+      areaRatioToReference: ingredient.area_ratio_to_reference,
+      thicknessBucket: ingredient.thickness_bucket,
+      densityKey: densityKeyForFoodName(ingredient.name),
+      referenceType: visionResult.reference_type,
+      referenceSubtype: visionResult.reference_subtype,
+    });
+
+    if (!grams) return ingredient;
+
+    return {
+      ...ingredient,
+      estimated_grams: grams,
+      quantity: `${grams}g`,
+      source: 'vision_portion_estimate',
+      confidence: confidenceForReferenceType(visionResult.reference_type),
+    };
+  });
+};
+
+const applyReferenceMetadataToNutrition = (nutrition, ingredientsForCalculation) => {
+  if (!nutrition || !Array.isArray(nutrition.ingredients)) return nutrition;
+
+  const referenceByName = new Map(
+    ingredientsForCalculation
+      .filter((ingredient) => ingredient?.source === 'vision_portion_estimate')
+      .map((ingredient) => [normalizeSearchKey(ingredient.name), ingredient])
+  );
+
+  if (referenceByName.size === 0) return nutrition;
+
+  return {
+    ...nutrition,
+    ingredients: nutrition.ingredients.map((ingredient) => {
+      const referenceIngredient = referenceByName.get(normalizeSearchKey(ingredient.name));
+      if (!referenceIngredient) return ingredient;
+      return {
+        ...ingredient,
+        estimated_grams: referenceIngredient.estimated_grams,
+        source: 'vision_portion_estimate',
+        confidence: referenceIngredient.confidence,
+      };
+    }),
+  };
 };
 
 const normalizeNutrition = (nutrition, fallbackName, fallbackQuantity, options = {}) => {
@@ -1147,12 +1204,14 @@ export default function MealTracker() {
 
       const foodNameFromImage = String(result?.food_name || fileNameFallback || 'Meal').trim();
       const quantityFromImage = String(result?.quantity || '1 serving').trim();
-      const nutrition = await calculateMealFromIdentifiedIngredients({
+      const ingredientsForCalculation = applyReferencePortionEstimates(result, identifiedIngredients);
+      const nutritionResult = await calculateMealFromIdentifiedIngredients({
         foodName: foodNameFromImage,
         quantity: quantityFromImage,
-        ingredients: identifiedIngredients,
+        ingredients: ingredientsForCalculation,
         mealSizeEstimateGrams: result?.meal_size_estimate_g,
       });
+      const nutrition = applyReferenceMetadataToNutrition(nutritionResult, ingredientsForCalculation);
 
       if (!nutrition || !Array.isArray(nutrition.ingredients) || nutrition.ingredients.length === 0) {
         throw new Error('AI could not estimate this photo. Please try a clearer image or use manual entry.');
