@@ -16,11 +16,15 @@ import { analyzeFoodImage, estimateNutrition, retryEstimateNutrition } from '@/s
 import { calculateMealFromIdentifiedIngredients, estimateIngredientFromFreeSources, estimateNutritionFromFreeSources } from '@/services/nutritionEngine';
 import { normalizeSearchKey } from '@/services/foodIntelligence';
 import { confidenceForReferenceType, densityKeyForFoodName, estimateGrams } from '@/services/portionEstimation';
+import { compressImage } from '@/services/imageCompression';
 import { supabase } from '@/lib/supabaseClient';
 import { useEnterSubmit } from '@/hooks/useEnterSubmit';
 
 const MEAL_TYPES = ['breakfast', 'brunch', 'lunch', 'dinner', 'snack'];
 const MACRO_KEYS = ['calories', 'protein', 'carbs', 'fats'];
+const MEAL_PHOTO_BUCKET = 'meal-photos';
+const MEAL_PHOTO_SIGNED_URL_EXPIRY_SECONDS = 60 * 60;
+const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024;
 
 const today = () => format(new Date(), 'yyyy-MM-dd');
 
@@ -172,15 +176,26 @@ const mealNeedsQuantity = (meal) =>
   meal?.source === 'needs_quantity' ||
   normalizeIngredients(meal?.ingredients).some((ingredient) => ingredient._needsQuantity);
 
-const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+const isDirectPhotoUrl = (value) => /^(data:image\/|blob:|https?:\/\/)/i.test(String(value || ''));
 
-const fileToDataUrl = (file) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(reader.error || new Error('Could not read image file'));
-    reader.readAsDataURL(file);
-  });
+const mealPhotoStoragePath = (value) => {
+  const photoUrl = String(value || '').trim();
+  const prefix = `${MEAL_PHOTO_BUCKET}/`;
+  if (!photoUrl.startsWith(prefix)) return '';
+  return photoUrl.slice(prefix.length);
+};
+
+const mealPhotoDisplayUrl = (value, signedPhotoUrls = {}) => {
+  if (!value) return '';
+  if (isDirectPhotoUrl(value)) return value;
+  return signedPhotoUrls[value] || '';
+};
+
+const buildMealPhotoPath = (userId) => {
+  const timestamp = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15);
+  const random = window.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
+  return `${userId}/${timestamp}-${random}.jpg`;
+};
 
 const normalizeFoodName = (value) =>
   String(value || '')
@@ -634,8 +649,8 @@ export default function MealTracker() {
 
   const [imageFile, setImageFile] = useState(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState('');
-  const [imageDataUrl, setImageDataUrl] = useState('');
   const [imageProcessing, setImageProcessing] = useState(false);
+  const [signedPhotoUrls, setSignedPhotoUrls] = useState({});
   const [barcode, setBarcode] = useState('');
   const [barcodeQuantity, setBarcodeQuantity] = useState('');
   const [barcodeProcessing, setBarcodeProcessing] = useState(false);
@@ -661,6 +676,46 @@ export default function MealTracker() {
     queryFn: () => dataService.entities.Meal.filter({ date: today(), created_by: user?.email }, '-created_date'),
     enabled: !!user?.email,
   });
+
+  useEffect(() => {
+    const storagePhotoUrls = [...new Set(
+      meals
+        .map((meal) => meal?.photo_url)
+        .filter((photoUrl) => mealPhotoStoragePath(photoUrl) && !signedPhotoUrls[photoUrl])
+    )];
+
+    if (storagePhotoUrls.length === 0) return undefined;
+
+    let cancelled = false;
+
+    Promise.all(
+      storagePhotoUrls.map(async (photoUrl) => {
+        const path = mealPhotoStoragePath(photoUrl);
+        const { data, error } = await supabase.storage
+          .from(MEAL_PHOTO_BUCKET)
+          .createSignedUrl(path, MEAL_PHOTO_SIGNED_URL_EXPIRY_SECONDS);
+
+        if (error || !data?.signedUrl) {
+          console.warn('Could not create meal photo signed URL:', error?.message || error);
+          return null;
+        }
+
+        return [photoUrl, data.signedUrl];
+      })
+    ).then((entries) => {
+      if (cancelled) return;
+      const resolvedEntries = entries.filter(Boolean);
+      if (resolvedEntries.length === 0) return;
+      setSignedPhotoUrls((current) => ({
+        ...current,
+        ...Object.fromEntries(resolvedEntries),
+      }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [meals, signedPhotoUrls]);
 
   useEffect(() => {
     if (!showScanner) {
@@ -785,22 +840,13 @@ export default function MealTracker() {
   useEffect(() => {
     if (!imageFile) {
       setImagePreviewUrl('');
-      setImageDataUrl('');
       return undefined;
     }
 
-    let cancelled = false;
     const previewUrl = URL.createObjectURL(imageFile);
     setImagePreviewUrl(previewUrl);
-    fileToDataUrl(imageFile)
-      .then((dataUrl) => {
-        if (!cancelled) setImageDataUrl(dataUrl);
-      })
-      .catch(() => {
-        if (!cancelled) setImageDataUrl('');
-      });
+
     return () => {
-      cancelled = true;
       URL.revokeObjectURL(previewUrl);
     };
   }, [imageFile]);
@@ -810,6 +856,22 @@ export default function MealTracker() {
       ...meal,
       date: today(),
     });
+  };
+
+  const uploadMealPhoto = async (file) => {
+    if (!file) return '';
+    if (!user?.id) throw new Error('You must be logged in to upload meal photos.');
+
+    const path = buildMealPhotoPath(user.id);
+    const { error } = await supabase.storage
+      .from(MEAL_PHOTO_BUCKET)
+      .upload(path, file, {
+        contentType: file.type || 'image/jpeg',
+        upsert: false,
+      });
+
+    if (error) throw new Error(error.message || 'Could not upload meal photo.');
+    return `${MEAL_PHOTO_BUCKET}/${path}`;
   };
 
   const lookupFoodEstimate = async (name, quantityText) => {
@@ -1180,8 +1242,8 @@ export default function MealTracker() {
       toast({ title: 'Choose a valid image file', variant: 'destructive' });
       return;
     }
-    if (imageFile.size > MAX_IMAGE_BYTES) {
-      toast({ title: 'Image is too large', description: 'Please upload an image under 3 MB.', variant: 'destructive' });
+    if (imageFile.size > MAX_SOURCE_IMAGE_BYTES) {
+      toast({ title: 'Image is too large', description: 'Please upload an image under 20 MB.', variant: 'destructive' });
       return;
     }
     if (mealType === 'custom' && !customMealType.trim()) {
@@ -1193,7 +1255,8 @@ export default function MealTracker() {
 
     try {
       const fileNameFallback = imageFile.name.replace(/\.[^/.]+$/, '').trim();
-      const result = await analyzeFoodImage(imageFile);
+      const compressedPhoto = await compressImage(imageFile);
+      const result = await analyzeFoodImage(compressedPhoto);
       const identifiedIngredients = Array.isArray(result?.ingredients)
         ? result.ingredients.filter((ingredient) => String(ingredient?.name || '').trim())
         : [];
@@ -1221,9 +1284,10 @@ export default function MealTracker() {
         ...nutrition,
         meal_type: selectedMealType(),
         notes: mealNotes.trim() || null,
-        photo_url: imageDataUrl || imagePreviewUrl || '',
+        photo_url: '',
+        _photoFile: compressedPhoto,
         source: nutrition.source || 'ai_photo',
-      }, sourceLabelFor(nutrition.source || 'ai_photo'), { photoPreviewUrl: imageDataUrl || imagePreviewUrl });
+      }, sourceLabelFor(nutrition.source || 'ai_photo'), { photoPreviewUrl: imagePreviewUrl });
     } catch (error) {
       toast({ title: error.message || 'Failed to estimate and save meal', variant: 'destructive' });
     } finally {
@@ -1414,11 +1478,20 @@ export default function MealTracker() {
 
     setSavingPending(true);
     try {
+      const uploadedPhotoUrl = meal._photoFile
+        ? await uploadMealPhoto(meal._photoFile)
+        : meal.photo_url || meal.photoPreviewUrl || null;
+
+      const mealToSave = { ...meal };
+      delete mealToSave._photoFile;
+      delete mealToSave.photoPreviewUrl;
+      delete mealToSave.sourceLabel;
+
       const savedMeal = await saveMeal({
-        ...meal,
+        ...mealToSave,
         meal_type: meal.meal_type || selectedMealType(),
         notes: meal.notes || mealNotes.trim() || null,
-        photo_url: meal.photo_url || meal.photoPreviewUrl || null,
+        photo_url: uploadedPhotoUrl,
       });
 
       queryClient.setQueryData(queryKey, (rows = []) => [savedMeal, ...rows.filter((row) => row.id !== savedMeal.id)]);
@@ -1527,16 +1600,18 @@ export default function MealTracker() {
         {meals.length === 0 ? (
           <EmptyState title="No meals yet" />
         ) : (
-          meals.map(m => (
+          meals.map((m) => {
+            const photoSrc = mealPhotoDisplayUrl(m.photo_url, signedPhotoUrls);
+            return (
             <div key={m.id} className="flex items-start justify-between gap-3 border-b border-border/60 py-3 last:border-0">
-              {m.photo_url && (
+              {photoSrc && (
                 <button
                   type="button"
-                  onClick={() => setFullscreenPhoto(m.photo_url)}
+                  onClick={() => setFullscreenPhoto(photoSrc)}
                   className="h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border/70 bg-muted"
                   aria-label={`Open photo for ${m.food_name}`}
                 >
-                  <img src={m.photo_url} alt={m.food_name} className="h-full w-full object-cover" />
+                  <img src={photoSrc} alt={m.food_name} className="h-full w-full object-cover" />
                 </button>
               )}
               <div className="min-w-0 flex-1 space-y-1.5">
@@ -1576,7 +1651,8 @@ export default function MealTracker() {
                 <Trash2 className="w-4 h-4" />
               </Button>
             </div>
-          ))
+            );
+          })
         )}
       </GlassCard>
 
