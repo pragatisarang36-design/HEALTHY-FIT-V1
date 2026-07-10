@@ -77,3 +77,21 @@ export async function calculateMealFromIdentifiedIngredients({ foodName, quantit
 
   return handleResponse(response);
 }
+
+export async function lookupBarcodeNutrition(barcode) {
+  const token = await getSessionToken();
+  if (!token) {
+    throw new Error('You must be logged in to look up barcode nutrition.');
+  }
+
+  const response = await fetch(`${BACKEND_API_URL}/api/nutrition/barcode-lookup`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ barcode }),
+  });
+
+  return handleResponse(response);
+}

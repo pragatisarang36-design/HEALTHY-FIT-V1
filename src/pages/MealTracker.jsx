@@ -13,7 +13,7 @@ import { toast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { analyzeFoodImage, estimateNutrition, retryEstimateNutrition } from '@/services/aiFeatures';
-import { calculateMealFromIdentifiedIngredients, estimateIngredientFromFreeSources, estimateNutritionFromFreeSources } from '@/services/nutritionEngine';
+import { calculateMealFromIdentifiedIngredients, estimateIngredientFromFreeSources, estimateNutritionFromFreeSources, lookupBarcodeNutrition } from '@/services/nutritionEngine';
 import { normalizeSearchKey } from '@/services/foodIntelligence';
 import { confidenceForReferenceType, densityKeyForFoodName, estimateGrams } from '@/services/portionEstimation';
 import { compressImage } from '@/services/imageCompression';
@@ -358,47 +358,6 @@ const parseGrams = (quantityText, fallback = 100) => {
   return match ? Number(match[1]) : fallback;
 };
 
-const firstFiniteNumber = (...values) => {
-  for (const value of values) {
-    if (value === null || value === undefined || value === '') continue;
-    const number = Number(value);
-    if (Number.isFinite(number)) return number;
-  }
-  return 0;
-};
-
-const per100FromServing = (value, servingQuantity) => {
-  const number = Number(value);
-  const grams = Number(servingQuantity);
-  if (!Number.isFinite(number) || !Number.isFinite(grams) || grams <= 0) return null;
-  return (number * 100) / grams;
-};
-
-const energyKcalPer100g = (nutriments, servingQuantity) => {
-  const kcal = firstFiniteNumber(
-    nutriments['energy-kcal_100g'],
-    nutriments['energy_kcal_100g'],
-    nutriments['energy-kcal'],
-    nutriments['energy_kcal'],
-    per100FromServing(nutriments['energy-kcal_serving'], servingQuantity),
-    per100FromServing(nutriments['energy_kcal_serving'], servingQuantity)
-  );
-  if (kcal > 0) return kcal;
-
-  const kj = firstFiniteNumber(
-    nutriments.energy_100g,
-    nutriments['energy-kj_100g'],
-    nutriments['energy_kj_100g'],
-    nutriments.energy,
-    nutriments['energy-kj'],
-    nutriments['energy_kj'],
-    per100FromServing(nutriments.energy_serving, servingQuantity),
-    per100FromServing(nutriments['energy-kj_serving'], servingQuantity),
-    per100FromServing(nutriments['energy_kj_serving'], servingQuantity)
-  );
-  return kj > 0 ? kj / 4.184 : 0;
-};
-
 const scalePer100g = (product, quantityText) => {
   const grams = parseGrams(quantityText, Number(product.serving_quantity) || 100);
   const multiplier = grams / 100;
@@ -418,216 +377,6 @@ const macrosToPer100g = (meal) => {
     protein_per_100g: Number(((Number(meal.protein) || 0) * multiplier).toFixed(1)),
     carbs_per_100g: Number(((Number(meal.carbs) || 0) * multiplier).toFixed(1)),
     fats_per_100g: Number(((Number(meal.fats) || 0) * multiplier).toFixed(1)),
-  };
-};
-
-const hasUsablePer100gNutrition = (product) =>
-  Number(product?.calories_per_100g) > 0 &&
-  (
-    Number(product?.protein_per_100g) > 0 ||
-    Number(product?.carbs_per_100g) > 0 ||
-    Number(product?.fats_per_100g) > 0
-  );
-
-const productFromMasterBrandedRow = (row, source = 'master_branded_foods') => row && ({
-  barcode: row.barcode || '',
-  product_name: row.product_name || 'Product',
-  brand: row.brand || '',
-  serving_size: row.serving_size || '100g',
-  serving_quantity: 100,
-  calories_per_100g: Number(row.calories_per_100g) || 0,
-  protein_per_100g: Number(row.protein_per_100g) || 0,
-  carbs_per_100g: Number(row.carbs_per_100g) || 0,
-  fats_per_100g: Number(row.fat_per_100g) || 0,
-  source,
-  confidence: Number(row.confidence) || 0.75,
-});
-
-const lookupMasterBrandedByBarcode = async (barcodeValue) => {
-  try {
-    const { data, error } = await supabase
-      .from('master_branded_foods')
-      .select('*')
-      .eq('barcode', barcodeValue)
-      .limit(1);
-    if (error) throw error;
-
-    console.info('[BARCODE FALLBACK] exact barcode lookup', { barcodeValue, rowsFound: data?.length || 0 });
-
-    const product = productFromMasterBrandedRow(data?.[0], 'master_branded_barcode');
-    return hasUsablePer100gNutrition(product) ? product : null;
-  } catch (error) {
-    console.error('[BARCODE FALLBACK] exact barcode lookup FAILED', { barcodeValue, error: error?.message || error, code: error?.code, details: error?.details, hint: error?.hint });
-    return null;
-  }
-};
-
-const barcodeFallbackTokens = (product) =>
-  [...new Set(
-    normalizeSearchKey(`${product?.brand || ''} ${product?.product_name || ''}`)
-      .split(' ')
-      .filter((token) => token.length >= 3)
-      .filter((token) => !['the', 'and', 'with', 'pack', 'product'].includes(token))
-  )];
-
-const brandedFallbackScore = (row, product, tokens) => {
-  const text = normalizeSearchKey(`${row.brand || ''} ${row.product_name || ''}`);
-  const productName = normalizeSearchKey(product?.product_name || '');
-  const brand = normalizeSearchKey(product?.brand || '');
-  const overlap = tokens.filter((token) => text.includes(token)).length;
-  if (overlap === 0) return null;
-
-  let score = overlap * 10;
-  if (productName && text.includes(productName)) score += 30;
-  if (brand && normalizeSearchKey(row.brand || '').includes(brand)) score += 15;
-  if (Number(row.calories_per_100g) <= 0) score -= 100;
-  score -= Math.max(0, normalizeSearchKey(row.product_name || '').length - productName.length) / 20;
-  return score;
-};
-
-const lookupMasterBrandedByProductText = async (product) => {
-  const tokens = barcodeFallbackTokens(product);
-  console.info('[BARCODE FALLBACK] fuzzy tokens', { product: product?.product_name, brand: product?.brand, tokens });
-  if (tokens.length === 0) return null;
-
-  try {
-    const tokenQueries = tokens.slice(0, 8);
-    const rowsById = new Map();
-    const queryResults = [];
-
-    for (const token of tokenQueries) {
-      const productQuery = await supabase
-        .from('master_branded_foods')
-        .select('*')
-        .ilike('product_name', `%${token}%`)
-        .limit(25);
-      if (productQuery.error) throw productQuery.error;
-      for (const row of productQuery.data || []) rowsById.set(row.id || `${row.barcode}:${row.product_name}`, row);
-      queryResults.push({ token, field: 'product_name', rows: productQuery.data?.length || 0 });
-
-      const brandQuery = await supabase
-        .from('master_branded_foods')
-        .select('*')
-        .ilike('brand', `%${token}%`)
-        .limit(25);
-      if (brandQuery.error) throw brandQuery.error;
-      for (const row of brandQuery.data || []) rowsById.set(row.id || `${row.barcode}:${row.product_name}`, row);
-      queryResults.push({ token, field: 'brand', rows: brandQuery.data?.length || 0 });
-    }
-
-    const data = [...rowsById.values()];
-
-    const scored = (data || [])
-      .map((row) => ({ row, score: brandedFallbackScore(row, product, tokens) }))
-      .filter((entry) => entry.score !== null)
-      .sort((a, b) => b.score - a.score);
-
-    console.info('[BARCODE FALLBACK] fuzzy candidates', {
-      queryResults,
-      candidatesReturned: data?.length || 0,
-      topScored: scored.slice(0, 5).map((entry) => ({ name: entry.row.product_name, brand: entry.row.brand, score: entry.score })),
-    });
-
-    const best = scored[0];
-    if (!best) {
-      console.warn('[BARCODE FALLBACK] no candidate had any token overlap');
-      return null;
-    }
-    if (best.score < 18) {
-      console.warn('[BARCODE FALLBACK] best candidate scored below threshold', { name: best.row.product_name, score: best.score });
-      return null;
-    }
-    const fallback = productFromMasterBrandedRow(best.row, 'master_branded_fuzzy');
-    if (!hasUsablePer100gNutrition(fallback)) {
-      console.warn('[BARCODE FALLBACK] best candidate had no usable macros', { name: best.row.product_name });
-      return null;
-    }
-    return { ...fallback, confidence: Math.min(Number(fallback.confidence) || 0.75, 0.62) };
-  } catch (error) {
-    console.error('[BARCODE FALLBACK] fuzzy lookup FAILED', { error: error?.message || error, code: error?.code, details: error?.details, hint: error?.hint });
-    return null;
-  }
-};
-
-const lookupGenericNutritionProduct = async (product) => {
-  const name = [product?.brand, product?.product_name].filter(Boolean).join(' ') || product?.product_name;
-  if (!name) return null;
-
-  try {
-    const nutrition = await estimateNutritionFromFreeSources(name, '100g');
-    console.info('[BARCODE FALLBACK] generic resolver result', { name, nutrition: nutrition ? { calories: nutrition.calories, source: nutrition.source } : null });
-    if (!nutrition || Number(nutrition.calories) <= 0) return null;
-
-    return {
-      barcode: product?.barcode || '',
-      product_name: product?.product_name || nutrition.food_name || 'Product',
-      brand: product?.brand || '',
-      serving_size: product?.serving_size || '100g',
-      serving_quantity: 100,
-      calories_per_100g: Number(nutrition.calories) || 0,
-      protein_per_100g: Number(nutrition.protein) || 0,
-      carbs_per_100g: Number(nutrition.carbs) || 0,
-      fats_per_100g: Number(nutrition.fats) || 0,
-      source: nutrition.source ? `generic_fallback:${nutrition.source}` : 'generic_nutrition_fallback',
-      confidence: Math.min(Number(nutrition.confidence) || 0.6, 0.58),
-    };
-  } catch (error) {
-    console.error('[BARCODE FALLBACK] generic resolver FAILED', { name, error: error?.message || error });
-    return null;
-  }
-};
-
-const resolveBarcodeNutritionFallback = async (product, barcodeValue) => {
-  const exactMaster = await lookupMasterBrandedByBarcode(barcodeValue);
-  if (exactMaster) return { product: exactMaster, label: 'Master nutrition barcode match' };
-
-  const brandedFallback = await lookupMasterBrandedByProductText(product);
-  if (brandedFallback) return { product: brandedFallback, label: 'Master branded fallback' };
-
-  const genericFallback = await lookupGenericNutritionProduct(product);
-  if (genericFallback) return { product: genericFallback, label: 'Nutrition database fallback' };
-
-  console.warn('[BARCODE FALLBACK] all dataset fallbacks exhausted, no macros found', { product: product?.product_name, barcodeValue });
-  return null;
-};
-
-const openFoodFactsProduct = async (barcode) => {
-  const response = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`, {
-    headers: { Accept: 'application/json' },
-  });
-  if (response.status === 404) return null;
-  if (!response.ok) throw new Error('Barcode lookup failed. Please try again.');
-  const data = await response.json();
-  if (data.status !== 1 || !data.product) return null;
-
-  const nutriments = data.product.nutriments || {};
-  const servingQuantity = Number(data.product.serving_quantity) || 100;
-  return {
-    barcode,
-    product_name: data.product.product_name || data.product.generic_name || 'Product',
-    brand: data.product.brands || '',
-    serving_size: data.product.serving_size || '100g',
-    serving_quantity: servingQuantity,
-    calories_per_100g: Math.round(energyKcalPer100g(nutriments, servingQuantity)),
-    protein_per_100g: firstFiniteNumber(
-      nutriments.proteins_100g,
-      nutriments.protein_100g,
-      per100FromServing(nutriments.proteins_serving, servingQuantity),
-      per100FromServing(nutriments.protein_serving, servingQuantity)
-    ),
-    carbs_per_100g: firstFiniteNumber(
-      nutriments.carbohydrates_100g,
-      nutriments.carbs_100g,
-      per100FromServing(nutriments.carbohydrates_serving, servingQuantity),
-      per100FromServing(nutriments.carbs_serving, servingQuantity)
-    ),
-    fats_per_100g: firstFiniteNumber(
-      nutriments.fat_100g,
-      nutriments.fats_100g,
-      per100FromServing(nutriments.fat_serving, servingQuantity),
-      per100FromServing(nutriments.fats_serving, servingQuantity)
-    ),
-    source: 'open_food_facts',
   };
 };
 
@@ -1313,31 +1062,15 @@ export default function MealTracker() {
     try {
       let product = await lookupCustomProduct(barcodeValue);
       let sourceLabel = 'Saved product';
-      let onlineProduct = null;
 
       if (!product) {
-        product = await lookupMasterBrandedByBarcode(barcodeValue);
-        sourceLabel = 'Master nutrition barcode match';
-      }
-
-      if (!product) {
-        onlineProduct = await openFoodFactsProduct(barcodeValue);
-        const datasetFallback = onlineProduct
-          ? await resolveBarcodeNutritionFallback(onlineProduct, barcodeValue)
-          : null;
-
-        if (datasetFallback?.product) {
+        const barcodeResult = await lookupBarcodeNutrition(barcodeValue);
+        if (barcodeResult?.product) {
           product = {
-            ...datasetFallback.product,
-            barcode: datasetFallback.product.barcode || barcodeValue,
-            product_name: onlineProduct.product_name || datasetFallback.product.product_name,
-            brand: onlineProduct.brand || datasetFallback.product.brand,
-            serving_size: onlineProduct.serving_size || datasetFallback.product.serving_size || '100g',
+            ...barcodeResult.product,
+            barcode: barcodeResult.product.barcode || barcodeValue,
           };
-          sourceLabel = datasetFallback.label;
-        } else if (onlineProduct) {
-          product = onlineProduct;
-          sourceLabel = 'Open Food Facts fallback';
+          sourceLabel = barcodeResult.label || 'Barcode nutrition fallback';
         }
       }
 
@@ -1365,20 +1098,6 @@ export default function MealTracker() {
 
       const quantityText = barcodeQuantity.trim() || product.serving_size || '100g';
       let macros = scalePer100g(product, quantityText);
-      if (macros.calories <= 0) {
-        const fallback = await resolveBarcodeNutritionFallback(product, barcodeValue);
-        if (fallback?.product) {
-          product = {
-            ...fallback.product,
-            barcode: fallback.product.barcode || barcodeValue,
-            product_name: product.product_name || fallback.product.product_name,
-            brand: product.brand || fallback.product.brand,
-            serving_size: product.serving_size || fallback.product.serving_size || '100g',
-          };
-          sourceLabel = fallback.label;
-          macros = scalePer100g(product, quantityText);
-        }
-      }
 
       if (macros.calories <= 0) {
         toast({
