@@ -17,7 +17,7 @@ export const workoutResolutionKey = (workout = {}) => [
   Number(workout.duration_minutes ?? workout.durationMinutes ?? workout.duration) || 0,
 ].join('|');
 
-export const unresolvedWorkoutLogData = ({ workoutType, intensity, durationMinutes, weightKg, reason, message, date }) => {
+export const unresolvedWorkoutLogData = ({ workoutType, exerciseId, intensity, durationMinutes, weightKg, reason, message, date }) => {
   const workout = {
     date,
     workout_type: workoutType,
@@ -28,6 +28,7 @@ export const unresolvedWorkoutLogData = ({ workoutType, intensity, durationMinut
     resolution_key: workoutResolutionKey(workout),
     raw_label: workoutType,
     workout_type: workoutType,
+    exercise_id: exerciseId || null,
     intensity,
     duration_minutes: Number(durationMinutes) || 0,
     weight_kg: Number(weightKg) || null,
@@ -78,19 +79,22 @@ const chooseBestMap = (maps, intensity) => {
     .sort((a, b) => b.score - a.score || Number(b.map.match_confidence || 0) - Number(a.map.match_confidence || 0))[0]?.map || null;
 };
 
-export async function estimateWorkoutCalories({ workoutType, intensity, durationMinutes, weightKg }) {
+export async function estimateWorkoutCalories({ workoutType, exerciseId, intensity, durationMinutes, weightKg }) {
   const nameKey = normalizeExerciseKey(workoutType);
-  if (!nameKey) {
+  if (!exerciseId && !nameKey) {
     return { resolved: false, calories: null, reason: 'missing_workout_type' };
   }
 
   let exercises;
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('master_exercises')
       .select('id,name,search_key,name_key')
-      .eq('active', true)
-      .eq('name_key', nameKey)
+      .eq('active', true);
+
+    query = exerciseId ? query.eq('id', exerciseId) : query.eq('name_key', nameKey);
+
+    const { data, error } = await query
       .limit(10);
 
     if (error) throw error;

@@ -5,17 +5,33 @@ import { useAuth } from '@/lib/AuthContext';
 import { useProfile } from '@/lib/useProfile';
 import { getWorkoutLabel, WORKOUT_TYPES } from '@/lib/metValues';
 import { attachWorkoutResolutionState, estimateWorkoutCalories, unresolvedWorkoutLogData } from '@/services/workoutCalorieService';
+import { searchWorkoutExercises } from '@/services/workoutExerciseService';
 import { format } from 'date-fns';
-import { Dumbbell, Plus, Loader2, Trash2, Flame, Clock } from 'lucide-react';
+import { Check, Dumbbell, Plus, Loader2, Search, Trash2, Flame, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import GlassCard from '@/components/ui/GlassCard';
 import EmptyState from '@/components/ui/EmptyState';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/use-toast';
 import { useEnterSubmit } from '@/hooks/useEnterSubmit';
+
+const initialForm = {
+  workout_type: '',
+  selected_exercise_id: '',
+  selected_exercise_name: '',
+  duration_minutes: '',
+  intensity: '',
+};
+
+const formatTag = (value) => String(value || '')
+  .replace(/_/g, ' ')
+  .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const workoutDisplayName = (workoutType) => getWorkoutLabel(workoutType) || workoutType;
 
 export default function WorkoutTracker() {
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -23,7 +39,8 @@ export default function WorkoutTracker() {
   const { profile } = useProfile();
   const { user } = useAuth();
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ workout_type: '', duration_minutes: '', intensity: '' });
+  const [form, setForm] = useState(initialForm);
+  const [exerciseSearch, setExerciseSearch] = useState('');
   const [isResolvingCalories, setIsResolvingCalories] = useState(false);
 
   const { data: weightLogs = [] } = useQuery({
@@ -54,7 +71,8 @@ export default function WorkoutTracker() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workouts-today'] });
       setShowAdd(false);
-      setForm({ workout_type: '', duration_minutes: '', intensity: '' });
+      setForm(initialForm);
+      setExerciseSearch('');
       toast({ title: 'Workout logged!' });
     },
   });
@@ -82,10 +100,18 @@ export default function WorkoutTracker() {
 
   const latestWeight = Number(weightLogs[0]?.weight || profile?.weight || 0);
   const canEstimate = Boolean(form.workout_type && form.duration_minutes && form.intensity && latestWeight > 0);
+  const { data: exerciseResults = [], isFetching: isSearchingExercises } = useQuery({
+    queryKey: ['workout-exercise-search', exerciseSearch],
+    queryFn: () => searchWorkoutExercises(exerciseSearch, 18),
+    initialData: [],
+    enabled: showAdd && exerciseSearch.trim().length >= 2,
+    staleTime: 60_000,
+  });
   const calorieEstimateQuery = useQuery({
-    queryKey: ['workout-calorie-estimate', form.workout_type, form.intensity, form.duration_minutes, latestWeight],
+    queryKey: ['workout-calorie-estimate', form.workout_type, form.selected_exercise_id, form.intensity, form.duration_minutes, latestWeight],
     queryFn: () => estimateWorkoutCalories({
       workoutType: form.workout_type,
+      exerciseId: form.selected_exercise_id,
       intensity: form.intensity,
       durationMinutes: Number(form.duration_minutes),
       weightKg: latestWeight,
@@ -110,6 +136,7 @@ export default function WorkoutTracker() {
     try {
       estimate = await estimateWorkoutCalories({
         workoutType: form.workout_type,
+        exerciseId: form.selected_exercise_id,
         intensity: form.intensity,
         durationMinutes: Number(form.duration_minutes),
         weightKg: latestWeight,
@@ -129,6 +156,7 @@ export default function WorkoutTracker() {
       dataService.entities.WorkoutMetUnresolved.create({
         plan_data: unresolvedWorkoutLogData({
           workoutType: form.workout_type,
+          exerciseId: form.selected_exercise_id,
           intensity: form.intensity,
           durationMinutes: Number(form.duration_minutes),
           weightKg: latestWeight,
@@ -156,6 +184,26 @@ export default function WorkoutTracker() {
       calories_unresolved: !estimate.resolved,
       date: today,
     });
+  };
+
+  const selectCommonWorkout = (type) => {
+    setForm((prev) => ({
+      ...prev,
+      workout_type: type,
+      selected_exercise_id: '',
+      selected_exercise_name: '',
+    }));
+    setExerciseSearch('');
+  };
+
+  const selectExercise = (exercise) => {
+    setForm((prev) => ({
+      ...prev,
+      workout_type: exercise.name,
+      selected_exercise_id: exercise.id,
+      selected_exercise_name: exercise.name,
+    }));
+    setExerciseSearch(exercise.name);
   };
 
   const canLogWorkout = Boolean(form.workout_type && form.duration_minutes && form.intensity && !createMutation.isPending && !isResolvingCalories);
@@ -203,7 +251,7 @@ export default function WorkoutTracker() {
             {workoutsWithResolution.map(w => (
               <div key={w.id} className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-muted/50">
                 <div>
-                  <p className="font-medium text-sm">{getWorkoutLabel(w.workout_type)}</p>
+                  <p className="font-medium text-sm">{workoutDisplayName(w.workout_type)}</p>
                   <p className="text-xs text-muted-foreground capitalize">{w.duration_minutes} min · {w.intensity}</p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -232,13 +280,73 @@ export default function WorkoutTracker() {
           </DialogHeader>
           <div className="space-y-4" onKeyDown={handleAddKeyDown}>
             <div>
-              <Label>Workout Type</Label>
-              <Select value={form.workout_type} onValueChange={v => setForm(p => ({ ...p, workout_type: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select workout" /></SelectTrigger>
-                <SelectContent>
-                  {WORKOUT_TYPES.map(t => <SelectItem key={t} value={t}>{getWorkoutLabel(t)}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Label>Workout</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={exerciseSearch}
+                  onChange={(event) => {
+                    setExerciseSearch(event.target.value);
+                    setForm((prev) => ({
+                      ...prev,
+                      workout_type: event.target.value,
+                      selected_exercise_id: '',
+                      selected_exercise_name: '',
+                    }));
+                  }}
+                  placeholder="Search exercise"
+                  className="pl-9"
+                />
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {WORKOUT_TYPES.filter((type) => type !== 'other_sport').map((type) => (
+                  <Badge
+                    key={type}
+                    variant={form.workout_type === type ? 'default' : 'outline'}
+                    className="cursor-pointer"
+                    onClick={() => selectCommonWorkout(type)}
+                  >
+                    {getWorkoutLabel(type)}
+                  </Badge>
+                ))}
+              </div>
+              {(exerciseSearch.trim().length >= 2 || form.selected_exercise_id) && (
+                <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border bg-background">
+                  {isSearchingExercises ? (
+                    <div className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Searching...
+                    </div>
+                  ) : exerciseResults.length > 0 ? (
+                    <div className="p-1">
+                      {exerciseResults.map((exercise) => {
+                        const selected = form.selected_exercise_id === exercise.id;
+                        const detail = [
+                          formatTag(exercise.category),
+                          (exercise.equipment || []).map(formatTag).join(', '),
+                        ].filter(Boolean).join(' - ');
+
+                        return (
+                          <button
+                            key={exercise.id}
+                            type="button"
+                            onClick={() => selectExercise(exercise)}
+                            className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-muted ${selected ? 'bg-muted' : ''}`}
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium">{exercise.name}</span>
+                              <span className="block truncate text-xs text-muted-foreground">{detail}</span>
+                            </span>
+                            {selected ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="px-3 py-3 text-sm text-muted-foreground">No matching exercises found.</p>
+                  )}
+                </div>
+              )}
             </div>
             <div>
               <Label>Duration (minutes)</Label>

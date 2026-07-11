@@ -258,6 +258,42 @@ export async function getWorkoutExerciseDatabase() {
   return exerciseCache;
 }
 
+export async function searchWorkoutExercises(query, limit = 20) {
+  const term = String(query || '').trim();
+  if (term.length < 2) return [];
+
+  const normalizedTerm = normalize(term);
+  const select = 'id,name,name_key,search_key,category,equipment,primary_muscles,confidence,source_key,active';
+  const [nameResult, keyResult] = await Promise.all([
+    supabase
+      .from('master_exercises')
+      .select(select)
+      .eq('active', true)
+      .ilike('name', `%${term}%`)
+      .order('confidence', { ascending: false })
+      .limit(limit),
+    supabase
+      .from('master_exercises')
+      .select(select)
+      .eq('active', true)
+      .ilike('search_key', `%${normalizedTerm}%`)
+      .order('confidence', { ascending: false })
+      .limit(limit),
+  ]);
+
+  if (nameResult.error) throw nameResult.error;
+  if (keyResult.error) throw keyResult.error;
+
+  const rows = new Map();
+  for (const row of [...(nameResult.data || []), ...(keyResult.data || [])]) {
+    rows.set(row.id, row);
+  }
+
+  return [...rows.values()]
+    .sort((a, b) => Number(b.confidence || 0) - Number(a.confidence || 0) || a.name.localeCompare(b.name))
+    .slice(0, limit);
+}
+
 export function clearWorkoutExerciseCache() {
   exerciseCache = null;
 }
