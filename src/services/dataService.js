@@ -557,7 +557,17 @@ const CustomProduct = tableStore({
 
 const Workout = tableStore({
   table: 'workouts',
-  normalize: (row, user) => normalizeBase({ ...row, duration_minutes: row.duration, intensity: '' }, user),
+  normalize: (row, user) => {
+    const durationMinutes = Number(row.duration ?? row.duration_minutes) || 0;
+    const caloriesBurned = Number(row.calories_burned) || 0;
+    return normalizeBase({
+      ...row,
+      duration_minutes: durationMinutes,
+      intensity: row.intensity || '',
+      calories_burned: caloriesBurned,
+      calories_unresolved: row.calories_unresolved === true,
+    }, user);
+  },
   toInsert: (data, user) => ({
     user_id: user.id,
     workout_type: data.workout_type,
@@ -598,6 +608,7 @@ export const dataService = {
     GroceryList: jsonStore('grocery'),
     ProgressInsight: jsonStore('insight'),
     WeightLog: jsonStore('weight_log'),
+    WorkoutMetUnresolved: jsonStore('workout_met_unresolved'),
     Notification: jsonStore('notification'),
     ChatMessage: jsonStore('chat_message'),
     Settings: jsonStore('settings'),

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { dataService } from '@/services/dataService';
 import { useProfile } from '@/lib/useProfile';
 import { useAuth } from '@/lib/AuthContext';
+import { attachWorkoutResolutionState } from '@/services/workoutCalorieService';
 import { format } from 'date-fns';
 import { Flame, Dumbbell, Droplets, Weight, Target, TrendingDown, Utensils, Activity, Loader2 } from 'lucide-react';
 import StatCard from '@/components/ui/StatCard';
@@ -31,6 +32,13 @@ export default function Dashboard() {
     enabled: isProfileComplete && !!user?.email,
   });
 
+  const { data: unresolvedWorkoutMetLogs = [] } = useQuery({
+    queryKey: ['dashboard-workout-met-unresolved', user?.id],
+    queryFn: () => dataService.entities.WorkoutMetUnresolved.filter({ created_by: user?.email }, '-created_date', 100),
+    initialData: [],
+    enabled: isProfileComplete && !!user?.email,
+  });
+
   const { data: waterEntries = [] } = useQuery({
     queryKey: ['water-today', today, user?.id],
     queryFn: () => dataService.entities.WaterIntake.filter({ date: today, created_by: user?.email }),
@@ -47,16 +55,19 @@ export default function Dashboard() {
 
   const stats = useMemo(() => {
     const caloriesConsumed = meals.reduce((sum, m) => sum + (m.calories || 0), 0);
-    const caloriesBurned = workouts.reduce((sum, w) => sum + (w.calories_burned || 0), 0);
+    const workoutsWithResolution = attachWorkoutResolutionState(workouts, unresolvedWorkoutMetLogs);
+    const workoutsWithCalories = workoutsWithResolution.filter((w) => !w.calories_unresolved);
+    const caloriesBurned = workoutsWithCalories.reduce((sum, w) => sum + (w.calories_burned || 0), 0);
     const netCalories = caloriesConsumed - caloriesBurned;
-    const workoutMinutes = workouts.reduce((sum, w) => sum + (w.duration_minutes || 0), 0);
+    const workoutMinutes = workoutsWithResolution.reduce((sum, w) => sum + (w.duration_minutes || 0), 0);
+    const unresolvedWorkoutCalories = workoutsWithResolution.length - workoutsWithCalories.length;
     const waterGlasses = waterEntries.reduce((sum, w) => sum + (w.glasses || 0), 0);
     const waterGoalGlasses = Math.round((profile?.water_goal_litres || 2.5) * 5);
     const latestWeight = weightLogs[0]?.weight || profile?.weight || 0;
     const targetWeight = profile?.target_weight || 0;
 
-    return { caloriesConsumed, caloriesBurned, netCalories, workoutMinutes, waterGlasses, waterGoalGlasses, latestWeight, targetWeight };
-  }, [meals, workouts, waterEntries, weightLogs, profile]);
+    return { caloriesConsumed, caloriesBurned, netCalories, workoutMinutes, unresolvedWorkoutCalories, waterGlasses, waterGoalGlasses, latestWeight, targetWeight };
+  }, [meals, workouts, unresolvedWorkoutMetLogs, waterEntries, weightLogs, profile]);
 
   if (profileLoading) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="w-6 h-6 animate-spin" /></div>;
@@ -97,6 +108,11 @@ export default function Dashboard() {
         <StatCard title="Net Calories" value={stats.netCalories} unit="kcal" icon={Target} color="emerald" />
         <StatCard title="Workout" value={stats.workoutMinutes} unit="min" icon={Dumbbell} color="blue" />
       </div>
+      {stats.unresolvedWorkoutCalories > 0 && (
+        <p className="text-xs text-amber-500">
+          {stats.unresolvedWorkoutCalories} workout{stats.unresolvedWorkoutCalories === 1 ? '' : 's'} excluded from calorie totals until MET mapping is available.
+        </p>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <GlassCard>

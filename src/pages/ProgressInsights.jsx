@@ -10,6 +10,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import { toast } from '@/components/ui/use-toast';
 import { format, subDays } from 'date-fns';
 import { generateInsights } from '@/services/aiFeatures';
+import { attachWorkoutResolutionState } from '@/services/workoutCalorieService';
 
 const ICON_MAP = {
   calorie: Flame,
@@ -57,20 +58,23 @@ export default function ProgressInsights() {
       await queryClient.invalidateQueries({ queryKey: ['insights', user?.id] });
       const last7Days = Array.from({ length: 7 }, (_, i) => format(subDays(new Date(), i), 'yyyy-MM-dd'));
 
-      const [meals, workouts, waterEntries, weightLogs] = await Promise.all([
+      const [meals, workouts, unresolvedWorkoutMetLogs, waterEntries, weightLogs] = await Promise.all([
         dataService.entities.Meal.filter({ created_by: user?.email }, '-date', 100),
         dataService.entities.Workout.filter({ created_by: user?.email }, '-date', 50),
+        dataService.entities.WorkoutMetUnresolved.filter({ created_by: user?.email }, '-created_date', 100),
         dataService.entities.WaterIntake.filter({ created_by: user?.email }, '-date', 50),
         dataService.entities.WeightLog.filter({ created_by: user?.email }, '-date', 10),
       ]);
 
       const recentMeals = meals.filter((m) => last7Days.includes(m.date));
-      const recentWorkouts = workouts.filter((w) => last7Days.includes(w.date));
+      const workoutsWithResolution = attachWorkoutResolutionState(workouts, unresolvedWorkoutMetLogs);
+      const recentWorkouts = workoutsWithResolution.filter((w) => last7Days.includes(w.date));
+      const recentWorkoutsWithCalories = recentWorkouts.filter((w) => !w.calories_unresolved);
       const recentWater = waterEntries.filter((w) => last7Days.includes(w.date));
 
       const totalCalories = recentMeals.reduce((s, m) => s + (Number(m.calories) || 0), 0);
       const totalProtein = recentMeals.reduce((s, m) => s + (Number(m.protein) || 0), 0);
-      const totalBurned = recentWorkouts.reduce((s, w) => s + (Number(w.calories_burned) || 0), 0);
+      const totalBurned = recentWorkoutsWithCalories.reduce((s, w) => s + (Number(w.calories_burned) || 0), 0);
       const totalWaterGlasses = recentWater.reduce((s, w) => s + (Number(w.glasses) || 0), 0);
       const workoutDays = new Set(recentWorkouts.map((w) => w.date)).size;
 

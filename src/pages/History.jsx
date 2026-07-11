@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { ChevronDown, ChevronRight, History as HistoryIcon, Loader2 } from 'lucide-react';
 import { dataService } from '@/services/dataService';
 import { useAuth } from '@/lib/AuthContext';
+import { attachWorkoutResolutionState } from '@/services/workoutCalorieService';
 import { Badge } from '@/components/ui/badge';
 import GlassCard from '@/components/ui/GlassCard';
 import EmptyState from '@/components/ui/EmptyState';
@@ -93,6 +94,7 @@ export default function History() {
     queries: [
       { queryKey: ['history-meals', user?.id], queryFn: () => dataService.entities.Meal.filter({ created_by: user?.email }, '-created_date', 100), enabled: !!user?.email },
       { queryKey: ['history-workouts', user?.id], queryFn: () => dataService.entities.Workout.filter({ created_by: user?.email }, '-created_date', 100), enabled: !!user?.email },
+      { queryKey: ['history-workout-met-unresolved', user?.id], queryFn: () => dataService.entities.WorkoutMetUnresolved.filter({ created_by: user?.email }, '-created_date', 100), enabled: !!user?.email },
       { queryKey: ['history-water', user?.id], queryFn: () => dataService.entities.WaterIntake.filter({ created_by: user?.email }, '-created_date', 300), enabled: !!user?.email },
       { queryKey: ['history-weight', user?.id], queryFn: () => dataService.entities.WeightLog.filter({ created_by: user?.email }, '-created_date', 100), enabled: !!user?.email },
     ],
@@ -100,7 +102,8 @@ export default function History() {
 
   const isLoading = queries.some((query) => query.isLoading);
   const items = useMemo(() => {
-    const [meals, workouts, water, weight] = queries.map((query) => query.data || []);
+    const [meals, workouts, unresolvedWorkoutMetLogs, water, weight] = queries.map((query) => query.data || []);
+    const workoutsWithResolution = attachWorkoutResolutionState(workouts, unresolvedWorkoutMetLogs);
     const waterByDate = water.reduce((acc, entry) => {
       const key = isoDay(entry);
       acc[key] = (acc[key] || 0) + litresFromWater(entry);
@@ -114,11 +117,13 @@ export default function History() {
         title: item.food_name,
         detail: `${item.quantity || '1 serving'} - ${item.calories || 0} kcal`,
       })),
-      ...workouts.map((item) => ({
+      ...workoutsWithResolution.map((item) => ({
         ...item,
         kind: 'workouts',
         title: item.workout_type,
-        detail: `${item.duration_minutes || item.duration || 0} min - ${item.calories_burned || 0} kcal`,
+        detail: item.calories_unresolved
+          ? `${item.duration_minutes || item.duration || 0} min - MET mapping needed`
+          : `${item.duration_minutes || item.duration || 0} min - ${item.calories_burned || 0} kcal`,
       })),
       ...Object.entries(waterByDate).map(([date, litres]) => ({
         id: `water-${date}`,
