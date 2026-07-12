@@ -12,6 +12,26 @@ const normalize = (value) => String(value || '')
   .trim()
   .replace(/\s+/g, ' ');
 
+const searchVariants = (value) => {
+  const raw = String(value || '').trim();
+  const normalized = normalize(raw);
+  const variants = new Set([raw, normalized].filter((item) => item.length >= 2));
+  const words = normalized.split(' ').filter(Boolean);
+  const last = words[words.length - 1] || '';
+
+  if (last.endsWith('ies') && last.length > 3) {
+    variants.add([...words.slice(0, -1), `${last.slice(0, -3)}y`].join(' '));
+  }
+  if (last.endsWith('es') && last.length > 3) {
+    variants.add([...words.slice(0, -1), last.slice(0, -2)].join(' '));
+  }
+  if (last.endsWith('s') && last.length > 3) {
+    variants.add([...words.slice(0, -1), last.slice(0, -1)].join(' '));
+  }
+
+  return [...variants].filter((item) => item.length >= 2);
+};
+
 const unique = (values = []) => [...new Set(
   values
     .flat()
@@ -262,31 +282,35 @@ export async function searchWorkoutExercises(query, limit = 20) {
   const term = String(query || '').trim();
   if (term.length < 2) return [];
 
-  const normalizedTerm = normalize(term);
+  const terms = searchVariants(term);
   const select = 'id,name,name_key,search_key,category,equipment,primary_muscles,confidence,source_key,active';
-  const [nameResult, keyResult] = await Promise.all([
-    supabase
-      .from('master_exercises')
-      .select(select)
-      .eq('active', true)
-      .ilike('name', `%${term}%`)
-      .order('confidence', { ascending: false })
-      .limit(limit),
-    supabase
-      .from('master_exercises')
-      .select(select)
-      .eq('active', true)
-      .ilike('search_key', `%${normalizedTerm}%`)
-      .order('confidence', { ascending: false })
-      .limit(limit),
-  ]);
+  const results = await Promise.all(
+    terms.flatMap((searchTerm) => [
+      supabase
+        .from('master_exercises')
+        .select(select)
+        .eq('active', true)
+        .ilike('name', `%${searchTerm}%`)
+        .order('confidence', { ascending: false })
+        .limit(limit),
+      supabase
+        .from('master_exercises')
+        .select(select)
+        .eq('active', true)
+        .ilike('search_key', `%${normalize(searchTerm)}%`)
+        .order('confidence', { ascending: false })
+        .limit(limit),
+    ])
+  );
 
-  if (nameResult.error) throw nameResult.error;
-  if (keyResult.error) throw keyResult.error;
+  const error = results.find((result) => result.error)?.error;
+  if (error) throw error;
 
   const rows = new Map();
-  for (const row of [...(nameResult.data || []), ...(keyResult.data || [])]) {
-    rows.set(row.id, row);
+  for (const result of results) {
+    for (const row of result.data || []) {
+      rows.set(row.id, row);
+    }
   }
 
   return [...rows.values()]
