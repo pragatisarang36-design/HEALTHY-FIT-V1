@@ -280,31 +280,38 @@ export async function estimateWorkoutCalories({ workoutType, exerciseId, intensi
     };
   }
 
-  if (exercises.length === 0) {
-    return { resolved: false, calories: null, reason: 'exercise_not_mapped' };
-  }
+  const lookupExercise = {
+    id: null,
+    name: workoutType,
+    search_key: nameKey,
+    name_key: nameKey,
+    category: null,
+    equipment: [],
+  };
 
-  let maps;
-  try {
-    const { data, error } = await supabase
-      .from('exercise_met_map')
-      .select('exercise_id,activity_met_id,intensity_variant,match_confidence,match_method,active')
-      .eq('active', true)
-      .in('exercise_id', exercises.map((exercise) => exercise.id));
+  let maps = [];
+  if (exercises.length > 0) {
+    try {
+      const { data, error } = await supabase
+        .from('exercise_met_map')
+        .select('exercise_id,activity_met_id,intensity_variant,match_confidence,match_method,active')
+        .eq('active', true)
+        .in('exercise_id', exercises.map((exercise) => exercise.id));
 
-    if (error) throw error;
-    maps = data || [];
-  } catch (error) {
-    return {
-      resolved: false,
-      calories: null,
-      reason: 'met_map_lookup_failed',
-      message: error?.message || 'Could not read exercise_met_map.',
-    };
+      if (error) throw error;
+      maps = data || [];
+    } catch (error) {
+      return {
+        resolved: false,
+        calories: null,
+        reason: 'met_map_lookup_failed',
+        message: error?.message || 'Could not read exercise_met_map.',
+      };
+    }
   }
 
   const bestMap = chooseBestMap(maps, intensity);
-  const primaryExercise = exercises.find((exercise) => exercise.id === bestMap?.exercise_id) || exercises[0];
+  const primaryExercise = exercises.find((exercise) => exercise.id === bestMap?.exercise_id) || exercises[0] || lookupExercise;
 
   if (bestMap) {
     try {
