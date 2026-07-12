@@ -310,7 +310,16 @@ export default function WorkoutTracker() {
                   </Badge>
                 ))}
               </div>
-              {(exerciseSearch.trim().length >= 2 || form.selected_exercise_id) && (
+              {form.selected_exercise_id && (
+                <div className="mt-2 flex items-center justify-between rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm">
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{form.selected_exercise_name}</span>
+                    <span className="block text-xs text-muted-foreground">Exact exercise selected</span>
+                  </span>
+                  <Check className="h-4 w-4 shrink-0 text-primary" />
+                </div>
+              )}
+              {exerciseSearch.trim().length >= 2 && !form.selected_exercise_id && (
                 <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border bg-background">
                   {isSearchingExercises ? (
                     <div className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
